@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import '../models/word_item.dart';
+import '../config/app_config.dart';
 import 'quiz_screen.dart';
 
 class ReciteScreen extends StatefulWidget {
   final List<WordItem> wordItems;
   final WordItem? startFromWord;
+  final Map<String, dynamic>? savedQuizProgress;
 
   const ReciteScreen({
     super.key,
     required this.wordItems,
     this.startFromWord,
+    this.savedQuizProgress,
   });
 
   @override
@@ -80,35 +83,55 @@ class _ReciteScreenState extends State<ReciteScreen> {
   }
 
   void _showCompletionDialog() {
+    final hasQuizProgress = widget.savedQuizProgress != null;
+    
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('背诵完成'),
-        content: const Text('恭喜！你已经完成了所有词语的背诵。\n现在开始双向默写测试吗？'),
+        content: Text(hasQuizProgress 
+          ? '恭喜！你已经完成了错误词语的背诵。\n现在继续之前的测试。'
+          : '恭喜！你已经完成了所有词语的背诵。\n现在开始双向默写测试。'),
         actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
-            },
-            child: const Text('返回首页'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => QuizScreen(
-                    wordItems: widget.wordItems,
-                    isBidirectional: true,
+          if (hasQuizProgress) ...[
+            // 如果有保存的测试进度，只显示"继续测试"，不显示"完成"
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // 恢复之前的测试进度
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => QuizScreen(
+                      wordItems: widget.wordItems, // 这个参数在恢复时不会被使用
+                      savedProgress: widget.savedQuizProgress,
+                    ),
                   ),
-                ),
-              );
-            },
-            child: const Text('开始测试'),
-          ),
+                );
+              },
+              child: const Text('继续测试'),
+            ),
+          ] else ...[
+            // 如果是正常的背诵后双向测试，强制进入测试，不提供"完成"选项
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // 开始新的双向测试
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => QuizScreen(
+                      wordItems: widget.wordItems,
+                      isBidirectional: true,
+                      isRandomQuiz: false,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('开始测试'),
+            ),
+          ],
         ],
       ),
     );
@@ -121,6 +144,7 @@ class _ReciteScreenState extends State<ReciteScreen> {
         appBar: AppBar(
           title: const Text('背诵模式'),
           backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+          automaticallyImplyLeading: AppConfig.showBackButtonInLearningFlow,
         ),
         body: const Center(
           child: Text('没有词语可以背诵'),
@@ -133,6 +157,7 @@ class _ReciteScreenState extends State<ReciteScreen> {
       appBar: AppBar(
         title: Text('背诵模式 (${_currentIndex + 1}/${widget.wordItems.length})'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        automaticallyImplyLeading: AppConfig.showBackButtonInLearningFlow,
       ),
       body: PageView.builder(
         controller: _pageController,
