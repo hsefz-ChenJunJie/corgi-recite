@@ -131,6 +131,54 @@ class QuizService {
     return quizItems;
   }
 
+  /// 获取指定内容的测试项目（指定抽查功能）
+  Future<List<QuizItem>> getSpecificQuizItems(List<WordMeaningPair> pairs) async {
+    final List<QuizItem> quizItems = [];
+    
+    // 按意项分组，将具有相同意项的词语合并在同一测试项目中
+    final Map<String, List<Word>> meaningToWords = {};
+    
+    for (final pair in pairs) {
+      final meaningText = pair.meaningText;
+      final word = Word(
+        id: pair.word.id,
+        text: pair.wordText,
+        createdAt: pair.createdAt,
+        updatedAt: pair.updatedAt,
+      );
+      
+      if (meaningToWords.containsKey(meaningText)) {
+        // 检查是否已存在相同的词语，避免重复
+        final existingWords = meaningToWords[meaningText]!;
+        if (!existingWords.any((w) => w.text == word.text)) {
+          existingWords.add(word);
+        }
+      } else {
+        meaningToWords[meaningText] = [word];
+      }
+    }
+    
+    // 为每个意项创建一个测试项目
+    for (final entry in meaningToWords.entries) {
+      final meaning = Meaning(
+        text: entry.key,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      
+      quizItems.add(QuizItem(
+        meaning: meaning,
+        requiredWords: entry.value,
+        type: QuizItemType.meaningToWords,
+      ));
+    }
+    
+    // 打乱顺序增加随机性
+    quizItems.shuffle();
+    
+    return quizItems;
+  }
+
   /// 验证答案
   bool validateAnswer(QuizItem item, List<String> userAnswers) {
     // 移除空白和转换为小写进行比较

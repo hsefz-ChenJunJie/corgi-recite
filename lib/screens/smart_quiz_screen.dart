@@ -3,17 +3,22 @@ import '../services/quiz_service.dart';
 import '../config/app_config.dart';
 import 'recite_screen.dart';
 import '../models/word_item.dart';
+import '../models/word_meaning_pair.dart';
 
 class SmartQuizScreen extends StatefulWidget {
-  final int quizCount;
+  final int? quizCount;
   final List<WordItem>? wordItems; // 用于双向测试
   final bool isBidirectionalQuiz; // 是否是双向测试
+  final List<WordMeaningPair>? specificPairs; // 用于指定抽查
+  final bool isSpecificQuiz; // 是否是指定抽查
 
   const SmartQuizScreen({
     super.key,
-    required this.quizCount,
+    this.quizCount,
     this.wordItems,
     this.isBidirectionalQuiz = false,
+    this.specificPairs,
+    this.isSpecificQuiz = false,
   });
 
   @override
@@ -54,12 +59,16 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
     try {
       List<QuizItem> items;
       
-      if (widget.isBidirectionalQuiz && widget.wordItems != null) {
+      if (widget.isSpecificQuiz && widget.specificPairs != null) {
+        // 指定抽查模式：使用指定的词语-意项对进行测试
+        items = await _quizService.getSpecificQuizItems(widget.specificPairs!);
+      } else if (widget.isBidirectionalQuiz && widget.wordItems != null) {
         // 双向测试模式：使用新添加的词语进行双向测试
         items = await _quizService.getBidirectionalQuizItems(widget.wordItems!);
       } else {
         // 随机抽查模式：默认使用意项到词语的测试模式
-        items = await _quizService.getMeaningToWordsQuizItems(widget.quizCount);
+        final count = widget.quizCount ?? 10; // 默认10个
+        items = await _quizService.getMeaningToWordsQuizItems(count);
       }
       
       setState(() {

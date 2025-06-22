@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import '../models/word_item.dart';
 import '../models/word_meaning_pair.dart';
 import '../database/database_helper.dart';
+import '../config/app_config.dart';
 import 'add_word_screen.dart';
 import 'quiz_screen.dart';
 import 'recite_screen.dart';
 import 'smart_quiz_screen.dart';
 import 'smart_recite_screen.dart';
+import 'search_quiz_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -213,6 +215,15 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _navigateToSearchQuiz() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const SearchQuizScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -226,12 +237,32 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: ElevatedButton.icon(
-                    onPressed: (_useNewSystem ? _wordMeaningPairs.isNotEmpty : _wordItems.isNotEmpty)
-                        ? () => _showQuizOptionsDialog()
-                        : null,
-                    icon: const Icon(Icons.quiz),
-                    label: const Text('随机抽查'),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: (_useNewSystem ? _wordMeaningPairs.isNotEmpty : _wordItems.isNotEmpty)
+                              ? () => _showQuizOptionsDialog()
+                              : null,
+                          icon: const Icon(Icons.quiz),
+                          label: const Text('随机抽查'),
+                        ),
+                      ),
+                      if (AppConfig.isDebugVersion && (_useNewSystem ? _wordMeaningPairs.isNotEmpty : _wordItems.isNotEmpty)) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _navigateToSearchQuiz(),
+                            icon: const Icon(Icons.search),
+                            label: const Text('指定抽查'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 Expanded(
