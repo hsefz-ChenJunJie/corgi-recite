@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../models/word_item.dart';
+import '../models/word_meaning_pair.dart';
 import '../database/database_helper.dart';
 import 'add_word_screen.dart';
 import 'quiz_screen.dart';
 import 'recite_screen.dart';
+import 'smart_quiz_screen.dart';
+import 'smart_recite_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,7 +18,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final DatabaseHelper _dbHelper = DatabaseHelper();
   List<WordItem> _wordItems = [];
+  List<WordMeaningPair> _wordMeaningPairs = [];
   bool _isLoading = true;
+  final bool _useNewSystem = true; // 是否使用新的多对多系统
 
   @override
   void initState() {
@@ -29,11 +34,19 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     
     try {
-      final wordItems = await _dbHelper.getAllWordItems();
-      setState(() {
-        _wordItems = wordItems;
-        _isLoading = false;
-      });
+      if (_useNewSystem) {
+        final wordMeaningPairs = await _dbHelper.getAllWordMeaningPairs();
+        setState(() {
+          _wordMeaningPairs = wordMeaningPairs;
+          _isLoading = false;
+        });
+      } else {
+        final wordItems = await _dbHelper.getAllWordItems();
+        setState(() {
+          _wordItems = wordItems;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -66,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showQuizOptionsDialog() {
     final TextEditingController countController = TextEditingController();
+    final int totalCount = _useNewSystem ? _wordMeaningPairs.length : _wordItems.length;
     
     showDialog(
       context: context,
@@ -74,13 +88,13 @@ class _HomeScreenState extends State<HomeScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('当前共有 ${_wordItems.length} 个词语'),
+            Text('当前共有 $totalCount 个词语-意项配对'),
             const SizedBox(height: 16),
             TextField(
               controller: countController,
               decoration: InputDecoration(
                 labelText: '抽查数量',
-                hintText: '请输入1-${_wordItems.length}',
+                hintText: '请输入1-$totalCount',
                 border: const OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
@@ -103,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 TextButton(
                   onPressed: () {
-                    countController.text = '${_wordItems.length}';
+                    countController.text = '$totalCount';
                   },
                   child: const Text('全部'),
                 ),
@@ -122,13 +136,13 @@ class _HomeScreenState extends State<HomeScreen> {
           TextButton(
             onPressed: () {
               final count = int.tryParse(countController.text);
-              if (count != null && count > 0 && count <= _wordItems.length) {
+              if (count != null && count > 0 && count <= totalCount) {
                 countController.dispose();
                 Navigator.pop(context);
                 _startQuiz(count);
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('请输入1-${_wordItems.length}之间的数字')),
+                  SnackBar(content: Text('请输入1-$totalCount之间的数字')),
                 );
               }
             },
@@ -140,19 +154,32 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _startQuiz(int count) {
-    final quizItems = count >= _wordItems.length 
-        ? _wordItems 
-        : (_wordItems..shuffle()).take(count).toList();
-    
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => QuizScreen(
-          wordItems: quizItems,
-          isRandomQuiz: true,
+    if (_useNewSystem) {
+      // 使用新的智能抽查系统
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SmartQuizScreen(
+            quizCount: count,
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      // 使用传统的抽查系统
+      final quizItems = count >= _wordItems.length 
+          ? _wordItems 
+          : (_wordItems..shuffle()).take(count).toList();
+      
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => QuizScreen(
+            wordItems: quizItems,
+            isRandomQuiz: true,
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _navigateToAddWordScreen() async {
@@ -164,15 +191,17 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (result is List<WordItem>) {
-      // 用户选择背诵，导航到背诵页面
+      // 用户选择背诵，导航到智能背诵页面
       if (mounted) {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ReciteScreen(
-              wordItems: result,
-              startFromWord: result.first,
-            ),
+            builder: (context) => _useNewSystem 
+                ? SmartReciteScreen(wordItems: result)
+                : ReciteScreen(
+                    wordItems: result,
+                    startFromWord: result.first,
+                  ),
           ),
         );
         // 背诵完成后刷新主页
@@ -198,7 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: ElevatedButton.icon(
-                    onPressed: _wordItems.isNotEmpty
+                    onPressed: (_useNewSystem ? _wordMeaningPairs.isNotEmpty : _wordItems.isNotEmpty)
                         ? () => _showQuizOptionsDialog()
                         : null,
                     icon: const Icon(Icons.quiz),
@@ -206,7 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 Expanded(
-                  child: _wordItems.isEmpty
+                  child: (_useNewSystem ? _wordMeaningPairs.isEmpty : _wordItems.isEmpty)
                       ? const Center(
                           child: Text(
                             '还没有词语\n点击右下角按钮添加',
@@ -218,49 +247,96 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         )
                       : ListView.builder(
-                          itemCount: _wordItems.length,
+                          itemCount: _useNewSystem ? _wordMeaningPairs.length : _wordItems.length,
                           itemBuilder: (context, index) {
-                            final wordItem = _wordItems[index];
-                            return Card(
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 4,
-                              ),
-                              child: ListTile(
-                                title: Text(
-                                  wordItem.word,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
+                            if (_useNewSystem) {
+                              final pair = _wordMeaningPairs[index];
+                              return Card(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 4,
+                                ),
+                                child: ListTile(
+                                  title: Text(
+                                    pair.wordText,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  subtitle: Text(pair.meaningText),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.delete),
+                                    onPressed: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title: const Text('确认删除'),
+                                          content: Text('确定要删除词语"${pair.wordText}"吗？'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(context),
+                                              child: const Text('取消'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () {
+                                                Navigator.pop(context);
+                                                // TODO: 实现删除多对多关系的逻辑
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('多对多删除功能待实现')),
+                                                );
+                                              },
+                                              child: const Text('删除'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ),
-                                subtitle: Text(wordItem.meaning),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete),
-                                  onPressed: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) => AlertDialog(
-                                        title: const Text('确认删除'),
-                                        content: Text('确定要删除词语"${wordItem.word}"吗？'),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(context),
-                                            child: const Text('取消'),
-                                          ),
-                                          TextButton(
-                                            onPressed: () {
-                                              Navigator.pop(context);
-                                              _deleteWordItem(wordItem.id!);
-                                            },
-                                            child: const Text('删除'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
+                              );
+                            } else {
+                              final wordItem = _wordItems[index];
+                              return Card(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 4,
                                 ),
-                              ),
-                            );
+                                child: ListTile(
+                                  title: Text(
+                                    wordItem.word,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  subtitle: Text(wordItem.meaning),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.delete),
+                                    onPressed: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title: const Text('确认删除'),
+                                          content: Text('确定要删除词语"${wordItem.word}"吗？'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(context),
+                                              child: const Text('取消'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () {
+                                                Navigator.pop(context);
+                                                _deleteWordItem(wordItem.id!);
+                                              },
+                                              child: const Text('删除'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              );
+                            }
                           },
                         ),
                 ),

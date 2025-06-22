@@ -23,29 +23,6 @@ class _AddWordScreenState extends State<AddWordScreen> {
     super.dispose();
   }
 
-  List<WordItem> _parseBatchInput(String input) {
-    final lines = input.split('\n').where((line) => line.trim().isNotEmpty).toList();
-    final wordItems = <WordItem>[];
-    final now = DateTime.now();
-
-    for (final line in lines) {
-      final parts = line.split('=');
-      if (parts.length == 2) {
-        final word = parts[0].trim();
-        final meaning = parts[1].trim();
-        if (word.isNotEmpty && meaning.isNotEmpty) {
-          wordItems.add(WordItem(
-            word: word,
-            meaning: meaning,
-            createdAt: now,
-            updatedAt: now,
-          ));
-        }
-      }
-    }
-
-    return wordItems;
-  }
 
   Future<void> _saveWords() async {
     if (_formKey.currentState!.validate()) {
@@ -54,10 +31,12 @@ class _AddWordScreenState extends State<AddWordScreen> {
       });
 
       try {
-        List<WordItem> wordsToSave;
+        List<String> wordsToSave;
         
         if (_isBatchMode) {
-          wordsToSave = _parseBatchInput(_batchController.text);
+          final lines = _batchController.text.split('\n').where((line) => line.trim().isNotEmpty).toList();
+          wordsToSave = lines.where((line) => line.contains('=')).toList();
+          
           if (wordsToSave.isEmpty) {
             setState(() {
               _isLoading = false;
@@ -73,11 +52,17 @@ class _AddWordScreenState extends State<AddWordScreen> {
           return; // 单个模式已移除
         }
 
-        final savedItems = <WordItem>[];
-        for (final wordItem in wordsToSave) {
-          final id = await _dbHelper.insertWordItem(wordItem);
-          savedItems.add(wordItem.copyWith(id: id));
-        }
+        // 使用新的多对多系统保存
+        final addedIds = await _dbHelper.addWordMeaningPairs(wordsToSave);
+        
+        // 为了向后兼容，获取新添加的配对并转换为WordItem
+        final newPairs = await _dbHelper.getAllWordMeaningPairs();
+        final savedItems = newPairs.take(addedIds.length).map((pair) => WordItem(
+          word: pair.wordText,
+          meaning: pair.meaningText,
+          createdAt: pair.createdAt,
+          updatedAt: pair.updatedAt,
+        )).toList();
 
         if (mounted) {
           final confirmed = await showDialog<bool>(
@@ -155,6 +140,8 @@ class _AddWordScreenState extends State<AddWordScreen> {
                     Text('apple=苹果'),
                     Text('book=书籍'),
                     Text('computer=计算机'),
+                    SizedBox(height: 8),
+                    Text('注意：系统会自动处理重复的词语和意项，建立多对多关系'),
                   ],
                 ),
               ),
@@ -164,7 +151,7 @@ class _AddWordScreenState extends State<AddWordScreen> {
                   controller: _batchController,
                   decoration: const InputDecoration(
                     labelText: '批量输入词语',
-                    hintText: '请按照格式输入多个词语...\n例如：\napple=苹果\nbook=书籍',
+                    hintText: '请按照格式输入多个词语...\n例如：\napple=苹果\nbook=书籍\ncomputer=计算机',
                     border: OutlineInputBorder(),
                     alignLabelWithHint: true,
                   ),
@@ -174,6 +161,7 @@ class _AddWordScreenState extends State<AddWordScreen> {
                     }
                     final lines = value.split('\n').where((line) => line.trim().isNotEmpty).toList();
                     bool hasValidFormat = false;
+                    
                     for (final line in lines) {
                       final parts = line.split('=');
                       if (parts.length == 2 && parts[0].trim().isNotEmpty && parts[1].trim().isNotEmpty) {
@@ -181,6 +169,7 @@ class _AddWordScreenState extends State<AddWordScreen> {
                         break;
                       }
                     }
+                    
                     if (!hasValidFormat) {
                       return '请按照格式输入：词语=意项';
                     }
