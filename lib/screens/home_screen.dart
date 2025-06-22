@@ -9,6 +9,7 @@ import 'recite_screen.dart';
 import 'smart_quiz_screen.dart';
 import 'smart_recite_screen.dart';
 import 'search_quiz_screen.dart';
+import 'data_port_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -230,6 +231,20 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Corgi Recite'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const DataPortScreen(),
+                ),
+              ).then((_) => _loadWordItems()); // 返回时刷新数据
+            },
+            icon: const Icon(Icons.settings),
+            tooltip: '数据管理',
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
