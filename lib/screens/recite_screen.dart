@@ -7,12 +7,14 @@ class ReciteScreen extends StatefulWidget {
   final List<WordItem> wordItems;
   final WordItem? startFromWord;
   final Map<String, dynamic>? savedQuizProgress;
+  final bool isImmediateReview; // 是否是立即复习模式（来自测试中的错误处理）
 
   const ReciteScreen({
     super.key,
     required this.wordItems,
     this.startFromWord,
     this.savedQuizProgress,
+    this.isImmediateReview = false,
   });
 
   @override
@@ -90,11 +92,22 @@ class _ReciteScreenState extends State<ReciteScreen> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('背诵完成'),
-        content: Text(hasQuizProgress 
-          ? '恭喜！你已经完成了错误词语的背诵。\n现在继续之前的测试。'
-          : '恭喜！你已经完成了所有词语的背诵。\n现在开始双向默写测试。'),
+        content: Text(widget.isImmediateReview
+          ? '恭喜！你已经完成了错误词语的背诵。\n现在回到测试继续作答。'
+          : hasQuizProgress 
+            ? '恭喜！你已经完成了错误词语的背诵。\n现在继续之前的测试。'
+            : '恭喜！你已经完成了所有词语的背诵。\n现在开始双向默写测试。'),
         actions: [
-          if (hasQuizProgress) ...[
+          if (widget.isImmediateReview) ...[
+            // 立即复习模式：简单返回到调用的测试界面
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // 关闭对话框
+                Navigator.pop(context); // 返回到调用的测试界面
+              },
+              child: const Text('回到测试'),
+            ),
+          ] else if (hasQuizProgress) ...[
             // 如果有保存的测试进度，只显示"继续测试"，不显示"完成"
             TextButton(
               onPressed: () {

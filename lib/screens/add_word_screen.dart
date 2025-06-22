@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/word_item.dart';
 import '../database/database_helper.dart';
 import '../config/app_config.dart';
+import '../services/context_parser.dart';
 import 'confirm_words_screen.dart';
 
 class AddWordScreen extends StatefulWidget {
@@ -45,12 +46,77 @@ class _AddWordScreenState extends State<AddWordScreen> {
           return;
         }
 
-        // 使用新的多对多系统保存
-        final addedIds = await _dbHelper.addWordMeaningPairs(wordsToSave);
+        // 解析上下文信息并保存
+        final contextInfoList = <Map<String, dynamic>>[];
+        for (final line in wordsToSave) {
+          final parts = line.split('=');
+          if (parts.length == 2) {
+            final wordText = parts[0].trim();
+            final meaningText = parts[1].trim();
+            
+            // 解析词语的上下文信息
+            final wordParseResult = ContextParser.parseText(wordText);
+            if (wordParseResult.hasContext) {
+              contextInfoList.add({
+                'type': 'word',
+                'text': wordText,
+                'contextInfo': wordParseResult.contextInfo,
+              });
+            }
+            
+            // 解析意项的上下文信息
+            final meaningParseResult = ContextParser.parseText(meaningText);
+            if (meaningParseResult.hasContext) {
+              contextInfoList.add({
+                'type': 'meaning',
+                'text': meaningText,
+                'contextInfo': meaningParseResult.contextInfo,
+              });
+            }
+          }
+        }
+
+        // 使用新的多对多系统保存（使用处理后的显示文本）
+        final processedLines = wordsToSave.map((line) {
+          final parts = line.split('=');
+          if (parts.length == 2) {
+            final wordParseResult = ContextParser.parseText(parts[0].trim());
+            final meaningParseResult = ContextParser.parseText(parts[1].trim());
+            return '${wordParseResult.displayText}=${meaningParseResult.displayText}';
+          }
+          return line;
+        }).toList();
+        
+        final addedIds = await _dbHelper.addWordMeaningPairs(processedLines);
         
         // 获取新添加的配对
         final allPairs = await _dbHelper.getAllWordMeaningPairs();
         final newPairs = allPairs.take(addedIds.length).toList();
+        
+        // 保存上下文信息
+        for (final contextData in contextInfoList) {
+          final contextInfo = contextData['contextInfo'];
+          final type = contextData['type'];
+          final text = contextData['text'];
+          
+          if (type == 'word') {
+            // 找到对应的词语ID
+            final word = newPairs
+                .map((p) => p.word)
+                .firstWhere((w) => w.text == ContextParser.parseText(text).displayText);
+            if (word.id != null) {
+              await _dbHelper.insertContextInfoForWord(word.id!, contextInfo);
+            }
+          } else if (type == 'meaning') {
+            // 找到对应的意项ID
+            final meaning = newPairs
+                .map((p) => p.meaning)
+                .firstWhere((m) => m.text == ContextParser.parseText(text).displayText);
+            if (meaning.id != null) {
+              await _dbHelper.insertContextInfoForMeaning(meaning.id!, contextInfo);
+            }
+          }
+        }
         
         // 为了向后兼容，也创建WordItem列表
         final savedItems = newPairs.map((pair) => WordItem(
@@ -148,10 +214,18 @@ class _AddWordScreenState extends State<AddWordScreen> {
                     ),
                     SizedBox(height: 4),
                     Text('每行一个词语，格式为：词语=意项'),
-                    Text('例如：'),
+                    Text('基础例子：'),
                     Text('apple=苹果'),
                     Text('book=书籍'),
-                    Text('computer=计算机'),
+                    SizedBox(height: 8),
+                    Text(
+                      '上下文感知格式（支持智能填空）：',
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+                    ),
+                    Text('• 占位符：give {something} [to] {someone}=给某人某物'),
+                    Text('• 介词：look [at] the sky=看天空'),
+                    Text('• 多关键词：big|large|huge=巨大的'),
+                    Text('• 词性：run (v.)=跑步'),
                     SizedBox(height: 8),
                     Text('注意：系统会自动处理重复的词语和意项，建立多对多关系'),
                   ],
@@ -163,9 +237,11 @@ class _AddWordScreenState extends State<AddWordScreen> {
                   controller: _batchController,
                   decoration: const InputDecoration(
                     labelText: '批量输入词语',
-                    hintText: '请按照格式输入多个词语...\n例如：\napple=苹果\nbook=书籍\ncomputer=计算机',
+                    hintText: '请按照格式输入多个词语...\n\napple=苹果\nbook=书籍',
                     border: OutlineInputBorder(),
                     alignLabelWithHint: true,
+                    contentPadding: EdgeInsets.all(16),
+                    hintMaxLines: 5,
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {

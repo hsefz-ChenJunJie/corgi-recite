@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/quiz_service.dart';
+import '../services/context_quiz_service.dart';
 import '../config/app_config.dart';
 import 'recite_screen.dart';
 import '../models/word_item.dart';
@@ -27,6 +28,7 @@ class SmartQuizScreen extends StatefulWidget {
 
 class _SmartQuizScreenState extends State<SmartQuizScreen> {
   final QuizService _quizService = QuizService();
+  final ContextQuizService _contextQuizService = ContextQuizService();
   final List<TextEditingController> _controllers = [];
   final List<FocusNode> _focusNodes = [];
   
@@ -139,6 +141,12 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
       _correctCount++;
     } else {
       _incorrectItems.add(currentItem);
+      
+      // 如果是双向测试且答错，立即保存进度并返回背诵
+      if (widget.isBidirectionalQuiz) {
+        _handleBidirectionalError();
+        return;
+      }
     }
   }
 
@@ -203,6 +211,102 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
       case QuizItemType.wordToMeaning:
         return '答案';
     }
+  }
+
+  void _handleBidirectionalError() {
+    // 保存当前测试进度
+    _saveQuizProgress();
+    
+    // 显示错误对话框并导航到背诵页面
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('答错了'),
+        content: const Text('请先重新背诵错误的词语，背诵完成后会自动回到测试继续。'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _startImmediateReview();
+            },
+            child: const Text('开始背诵'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _saveQuizProgress() {
+    // 这里可以保存到数据库或SharedPreferences
+    // 现在先用简单的临时存储
+    // TODO: 实现进度持久化存储
+  }
+
+  void _startImmediateReview() {
+    // 创建错误词语的WordItem列表
+    final errorItem = _incorrectItems.last;
+    final incorrectWordItems = <WordItem>[];
+    
+    if (errorItem.type == QuizItemType.meaningToWords) {
+      // 意项到词语：为每个词语创建WordItem
+      for (final word in errorItem.requiredWords) {
+        incorrectWordItems.add(WordItem(
+          word: word.text,
+          meaning: errorItem.meaning!.text,
+          createdAt: word.createdAt,
+          updatedAt: word.updatedAt,
+        ));
+      }
+    } else if (errorItem.type == QuizItemType.wordToMeanings) {
+      // 词语到意项：为每个意项创建WordItem
+      for (final meaning in errorItem.requiredMeanings) {
+        incorrectWordItems.add(WordItem(
+          word: errorItem.word!.text,
+          meaning: meaning.text,
+          createdAt: errorItem.word!.createdAt,
+          updatedAt: errorItem.word!.updatedAt,
+        ));
+      }
+    }
+
+    if (incorrectWordItems.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ReciteScreen(
+            wordItems: incorrectWordItems,
+            startFromWord: incorrectWordItems.first,
+            isImmediateReview: true, // 标记为立即复习模式
+          ),
+        ),
+      ).then((_) {
+        // 背诵完成后恢复测试进度
+        _resumeQuizAfterReview();
+      });
+    }
+  }
+
+  void _resumeQuizAfterReview() {
+    // 从错误列表中移除刚刚背诵的词语
+    if (_incorrectItems.isNotEmpty) {
+      _incorrectItems.removeLast();
+    }
+    
+    // 重置当前题目状态，让用户重新回答刚才答错的题目
+    setState(() {
+      _isAnswered = false;
+      _isCorrect = false;
+    });
+    
+    // 清空输入框
+    for (final controller in _controllers) {
+      controller.clear();
+    }
+    
+    // 不调用_nextQuestion()，保持在当前题目让用户重新作答
+    // 重新设置当前题目的输入框
+    _setupCurrentQuestion();
   }
 
   void _startReviewIncorrectItems() {

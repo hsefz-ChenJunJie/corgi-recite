@@ -5,6 +5,9 @@ class AppConfig {
   // 在学习流程中是否显示返回按钮（背诵和测试页面）
   static bool get showBackButtonInLearningFlow => isDebugVersion;
   
+  // 在测试页面是否显示返回按钮
+  static bool get showBackButtonInQuiz => isDebugVersion;
+  
   // 在添加页面始终显示返回按钮
   static bool get showBackButtonInAddPage => true;
   

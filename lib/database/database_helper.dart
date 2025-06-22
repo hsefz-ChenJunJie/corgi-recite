@@ -1,10 +1,12 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'dart:convert';
 import '../models/word_item.dart';
 import '../models/word.dart';
 import '../models/meaning.dart';
 import '../models/word_meaning.dart';
 import '../models/word_meaning_pair.dart';
+import '../models/context_info.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -22,7 +24,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'corgi_recite.db');
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -57,6 +59,25 @@ class DatabaseHelper {
         FOREIGN KEY (word_id) REFERENCES words (id) ON DELETE CASCADE,
         FOREIGN KEY (meaning_id) REFERENCES meanings (id) ON DELETE CASCADE,
         UNIQUE(word_id, meaning_id)
+      )
+    ''');
+
+    // 上下文信息表
+    await db.execute('''
+      CREATE TABLE context_info(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        word_id INTEGER,
+        meaning_id INTEGER,
+        original_text TEXT NOT NULL,
+        display_text TEXT NOT NULL,
+        placeholders TEXT,
+        prepositions TEXT,
+        keywords TEXT,
+        part_of_speech TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (word_id) REFERENCES words (id) ON DELETE CASCADE,
+        FOREIGN KEY (meaning_id) REFERENCES meanings (id) ON DELETE CASCADE
       )
     ''');
 
@@ -107,6 +128,27 @@ class DatabaseHelper {
 
       // 迁移现有数据
       await _migrateOldData(db);
+    }
+    
+    if (oldVersion < 3) {
+      // 添加上下文信息表
+      await db.execute('''
+        CREATE TABLE context_info(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          word_id INTEGER,
+          meaning_id INTEGER,
+          original_text TEXT NOT NULL,
+          display_text TEXT NOT NULL,
+          placeholders TEXT,
+          prepositions TEXT,
+          keywords TEXT,
+          part_of_speech TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (word_id) REFERENCES words (id) ON DELETE CASCADE,
+          FOREIGN KEY (meaning_id) REFERENCES meanings (id) ON DELETE CASCADE
+        )
+      ''');
     }
   }
 
@@ -549,5 +591,124 @@ class DatabaseHelper {
     });
     
     return deletedCount;
+  }
+
+  // ==================== 上下文信息相关方法 ====================
+
+  /// 插入上下文信息 - 关联词语
+  Future<int> insertContextInfoForWord(int wordId, ContextInfo contextInfo) async {
+    final db = await database;
+    return await db.insert('context_info', {
+      'word_id': wordId,
+      'meaning_id': null,
+      'original_text': contextInfo.originalText,
+      'display_text': contextInfo.displayText,
+      'placeholders': jsonEncode(contextInfo.placeholders.map((p) => p.toMap()).toList()),
+      'prepositions': jsonEncode(contextInfo.prepositions.map((p) => p.toMap()).toList()),
+      'keywords': jsonEncode(contextInfo.keywords),
+      'part_of_speech': contextInfo.partOfSpeech,
+      'created_at': contextInfo.createdAt.millisecondsSinceEpoch,
+      'updated_at': contextInfo.updatedAt.millisecondsSinceEpoch,
+    });
+  }
+
+  /// 插入上下文信息 - 关联意项
+  Future<int> insertContextInfoForMeaning(int meaningId, ContextInfo contextInfo) async {
+    final db = await database;
+    return await db.insert('context_info', {
+      'word_id': null,
+      'meaning_id': meaningId,
+      'original_text': contextInfo.originalText,
+      'display_text': contextInfo.displayText,
+      'placeholders': jsonEncode(contextInfo.placeholders.map((p) => p.toMap()).toList()),
+      'prepositions': jsonEncode(contextInfo.prepositions.map((p) => p.toMap()).toList()),
+      'keywords': jsonEncode(contextInfo.keywords),
+      'part_of_speech': contextInfo.partOfSpeech,
+      'created_at': contextInfo.createdAt.millisecondsSinceEpoch,
+      'updated_at': contextInfo.updatedAt.millisecondsSinceEpoch,
+    });
+  }
+
+  /// 根据词语ID获取上下文信息
+  Future<ContextInfo?> getContextInfoByWordId(int wordId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'context_info',
+      where: 'word_id = ?',
+      whereArgs: [wordId],
+    );
+
+    if (maps.isEmpty) return null;
+    
+    return _contextInfoFromMap(maps.first);
+  }
+
+  /// 根据意项ID获取上下文信息
+  Future<ContextInfo?> getContextInfoByMeaningId(int meaningId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'context_info',
+      where: 'meaning_id = ?',
+      whereArgs: [meaningId],
+    );
+
+    if (maps.isEmpty) return null;
+    
+    return _contextInfoFromMap(maps.first);
+  }
+
+  /// 获取所有上下文信息
+  Future<List<ContextInfo>> getAllContextInfo() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('context_info');
+    return maps.map((map) => _contextInfoFromMap(map)).toList();
+  }
+
+  /// 更新上下文信息
+  Future<int> updateContextInfo(ContextInfo contextInfo) async {
+    final db = await database;
+    return await db.update(
+      'context_info',
+      {
+        'original_text': contextInfo.originalText,
+        'display_text': contextInfo.displayText,
+        'placeholders': jsonEncode(contextInfo.placeholders.map((p) => p.toMap()).toList()),
+        'prepositions': jsonEncode(contextInfo.prepositions.map((p) => p.toMap()).toList()),
+        'keywords': jsonEncode(contextInfo.keywords),
+        'part_of_speech': contextInfo.partOfSpeech,
+        'updated_at': contextInfo.updatedAt.millisecondsSinceEpoch,
+      },
+      where: 'id = ?',
+      whereArgs: [contextInfo.id],
+    );
+  }
+
+  /// 删除上下文信息
+  Future<int> deleteContextInfo(int id) async {
+    final db = await database;
+    return await db.delete(
+      'context_info',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// 从Map转换为ContextInfo对象
+  ContextInfo _contextInfoFromMap(Map<String, dynamic> map) {
+    return ContextInfo(
+      id: map['id'],
+      originalText: map['original_text'],
+      displayText: map['display_text'],
+      placeholders: (jsonDecode(map['placeholders'] ?? '[]') as List)
+          .map((p) => Placeholder.fromMap(p))
+          .toList(),
+      prepositions: (jsonDecode(map['prepositions'] ?? '[]') as List)
+          .map((p) => Preposition.fromMap(p))
+          .toList(),
+      keywords: List<String>.from(jsonDecode(map['keywords'] ?? '[]')),
+      partOfSpeech: map['part_of_speech'],
+      createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at']),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at']),
+    );
   }
 }

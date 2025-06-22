@@ -22,6 +22,20 @@ class WordMeaningPair {
       ? word.updatedAt
       : meaning.updatedAt;
 
+  Map<String, dynamic> toMap() {
+    return {
+      'word': word.toMap(),
+      'meaning': meaning.toMap(),
+    };
+  }
+
+  factory WordMeaningPair.fromMap(Map<String, dynamic> map) {
+    return WordMeaningPair(
+      word: Word.fromMap(map['word']),
+      meaning: Meaning.fromMap(map['meaning']),
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
