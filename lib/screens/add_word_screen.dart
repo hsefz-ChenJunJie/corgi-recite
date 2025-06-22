@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/word_item.dart';
 import '../database/database_helper.dart';
 import '../config/app_config.dart';
+import 'confirm_words_screen.dart';
 
 class AddWordScreen extends StatefulWidget {
   const AddWordScreen({super.key});
@@ -15,14 +16,12 @@ class _AddWordScreenState extends State<AddWordScreen> {
   final _batchController = TextEditingController();
   final DatabaseHelper _dbHelper = DatabaseHelper();
   bool _isLoading = false;
-  bool _isBatchMode = false;
 
   @override
   void dispose() {
     _batchController.dispose();
     super.dispose();
   }
-
 
   Future<void> _saveWords() async {
     if (_formKey.currentState!.validate()) {
@@ -31,33 +30,30 @@ class _AddWordScreenState extends State<AddWordScreen> {
       });
 
       try {
-        List<String> wordsToSave;
+        final lines = _batchController.text.split('\n').where((line) => line.trim().isNotEmpty).toList();
+        final wordsToSave = lines.where((line) => line.contains('=')).toList();
         
-        if (_isBatchMode) {
-          final lines = _batchController.text.split('\n').where((line) => line.trim().isNotEmpty).toList();
-          wordsToSave = lines.where((line) => line.contains('=')).toList();
-          
-          if (wordsToSave.isEmpty) {
-            setState(() {
-              _isLoading = false;
-            });
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('请输入有效的词语格式：词语=意项')),
-              );
-            }
-            return;
+        if (wordsToSave.isEmpty) {
+          setState(() {
+            _isLoading = false;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('请输入有效的词语格式：词语=意项')),
+            );
           }
-        } else {
-          return; // 单个模式已移除
+          return;
         }
 
         // 使用新的多对多系统保存
         final addedIds = await _dbHelper.addWordMeaningPairs(wordsToSave);
         
-        // 为了向后兼容，获取新添加的配对并转换为WordItem
-        final newPairs = await _dbHelper.getAllWordMeaningPairs();
-        final savedItems = newPairs.take(addedIds.length).map((pair) => WordItem(
+        // 获取新添加的配对
+        final allPairs = await _dbHelper.getAllWordMeaningPairs();
+        final newPairs = allPairs.take(addedIds.length).toList();
+        
+        // 为了向后兼容，也创建WordItem列表
+        final savedItems = newPairs.map((pair) => WordItem(
           word: pair.wordText,
           meaning: pair.meaningText,
           createdAt: pair.createdAt,
@@ -65,31 +61,47 @@ class _AddWordScreenState extends State<AddWordScreen> {
         )).toList();
 
         if (mounted) {
-          final confirmed = await showDialog<bool>(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => AlertDialog(
-              title: const Text('添加成功'),
-              content: Text('已成功添加${savedItems.length}个词语！\n现在开始背诵这些词语。'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('稍后'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('开始背诵'),
-                ),
-              ],
+          // 导航到确认页面
+          final result = await Navigator.push<dynamic>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ConfirmWordsScreen(
+                wordItems: savedItems,
+                wordMeaningPairs: newPairs,
+              ),
             ),
           );
 
-          if (confirmed == true && mounted) {
-            // 返回新保存的词语列表，让主屏幕处理后续导航
+          if (result == true && mounted) {
+            // 用户选择开始背诵，返回新保存的词语列表，让主屏幕处理后续导航
             Navigator.pop(context, savedItems);
+          } else if (result == 'cancel' && mounted) {
+            // 用户取消添加，删除刚才保存的数据
+            try {
+              await _dbHelper.deleteWordMeaningPairs(newPairs);
+              setState(() {
+                _isLoading = false;
+              });
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('已取消添加')),
+                );
+              }
+            } catch (e) {
+              setState(() {
+                _isLoading = false;
+              });
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('取消操作失败: $e')),
+                );
+              }
+            }
           } else {
-            // 用户点击了“稍后”或关闭了对话框，仅返回true以刷新主页
-            Navigator.pop(context, true);
+            // 其他情况（如系统返回），保持在当前页面
+            setState(() {
+              _isLoading = false;
+            });
           }
         }
       } catch (e) {
@@ -182,12 +194,7 @@ class _AddWordScreenState extends State<AddWordScreen> {
               ),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: _isLoading ? null : () {
-                  setState(() {
-                    _isBatchMode = true;
-                  });
-                  _saveWords();
-                },
+                onPressed: _isLoading ? null : _saveWords,
                 child: _isLoading
                     ? const SizedBox(
                         height: 20,

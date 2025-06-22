@@ -24,6 +24,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<WordMeaningPair> _wordMeaningPairs = [];
   bool _isLoading = true;
   final bool _useNewSystem = true; // 是否使用新的多对多系统
+  bool _isSelectionMode = false; // 是否处于多选模式
+  Set<int> _selectedItems = {}; // 选中的项目索引
 
   @override
   void initState() {
@@ -76,6 +78,109 @@ class _HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('删除失败: $e')),
         );
+      }
+    }
+  }
+
+  Future<void> _deleteWordMeaningPair(WordMeaningPair pair) async {
+    try {
+      await _dbHelper.deleteWordMeaningPair(pair.word.id!, pair.meaning.id!);
+      await _loadWordItems();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('词语已删除')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除失败: $e')),
+        );
+      }
+    }
+  }
+
+  void _toggleSelectionMode() {
+    setState(() {
+      _isSelectionMode = !_isSelectionMode;
+      _selectedItems.clear();
+    });
+  }
+
+  void _toggleItemSelection(int index) {
+    setState(() {
+      if (_selectedItems.contains(index)) {
+        _selectedItems.remove(index);
+      } else {
+        _selectedItems.add(index);
+      }
+    });
+  }
+
+  void _selectAllItems() {
+    setState(() {
+      if (_selectedItems.length == (_useNewSystem ? _wordMeaningPairs.length : _wordItems.length)) {
+        _selectedItems.clear();
+      } else {
+        _selectedItems = Set.from(List.generate(_useNewSystem ? _wordMeaningPairs.length : _wordItems.length, (index) => index));
+      }
+    });
+  }
+
+  Future<void> _deleteSelectedItems() async {
+    if (_selectedItems.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除选中的${_selectedItems.length}个词语吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        if (_useNewSystem) {
+          final selectedPairs = _selectedItems.map((index) => _wordMeaningPairs[index]).toList();
+          final deletedCount = await _dbHelper.deleteWordMeaningPairs(selectedPairs);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('已删除${deletedCount}个词语')),
+            );
+          }
+        } else {
+          for (final index in _selectedItems) {
+            await _dbHelper.deleteWordItem(_wordItems[index].id!);
+          }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('已删除${_selectedItems.length}个词语')),
+            );
+          }
+        }
+        
+        setState(() {
+          _isSelectionMode = false;
+          _selectedItems.clear();
+        });
+        
+        await _loadWordItems();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('删除失败: $e')),
+          );
+        }
       }
     }
   }
@@ -229,21 +334,53 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Corgi Recite'),
+        title: _isSelectionMode 
+            ? Text('已选择 ${_selectedItems.length} 项')
+            : const Text('Corgi Recite'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        leading: _isSelectionMode 
+            ? IconButton(
+                onPressed: _toggleSelectionMode,
+                icon: const Icon(Icons.close),
+                tooltip: '取消选择',
+              )
+            : null,
         actions: [
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const DataPortScreen(),
-                ),
-              ).then((_) => _loadWordItems()); // 返回时刷新数据
-            },
-            icon: const Icon(Icons.settings),
-            tooltip: '数据管理',
-          ),
+          if (_isSelectionMode) ...[
+            IconButton(
+              onPressed: _selectAllItems,
+              icon: Icon(_selectedItems.length == (_useNewSystem ? _wordMeaningPairs.length : _wordItems.length)
+                  ? Icons.deselect
+                  : Icons.select_all),
+              tooltip: _selectedItems.length == (_useNewSystem ? _wordMeaningPairs.length : _wordItems.length)
+                  ? '取消全选'
+                  : '全选',
+            ),
+            IconButton(
+              onPressed: _selectedItems.isNotEmpty ? _deleteSelectedItems : null,
+              icon: const Icon(Icons.delete),
+              tooltip: '删除选中项',
+            ),
+          ] else ...[
+            if ((_useNewSystem ? _wordMeaningPairs.isNotEmpty : _wordItems.isNotEmpty))
+              IconButton(
+                onPressed: _toggleSelectionMode,
+                icon: const Icon(Icons.checklist),
+                tooltip: '多选删除',
+              ),
+            IconButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const DataPortScreen(),
+                  ),
+                ).then((_) => _loadWordItems()); // 返回时刷新数据
+              },
+              icon: const Icon(Icons.settings),
+              tooltip: '数据管理',
+            ),
+          ],
         ],
       ),
       body: _isLoading
@@ -297,12 +434,20 @@ class _HomeScreenState extends State<HomeScreen> {
                           itemBuilder: (context, index) {
                             if (_useNewSystem) {
                               final pair = _wordMeaningPairs[index];
+                              final isSelected = _selectedItems.contains(index);
                               return Card(
                                 margin: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                   vertical: 4,
                                 ),
+                                color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
                                 child: ListTile(
+                                  leading: _isSelectionMode
+                                      ? Checkbox(
+                                          value: isSelected,
+                                          onChanged: (value) => _toggleItemSelection(index),
+                                        )
+                                      : null,
                                   title: Text(
                                     pair.wordText,
                                     style: const TextStyle(
@@ -310,44 +455,54 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   ),
                                   subtitle: Text(pair.meaningText),
-                                  trailing: IconButton(
-                                    icon: const Icon(Icons.delete),
-                                    onPressed: () {
-                                      showDialog(
-                                        context: context,
-                                        builder: (context) => AlertDialog(
-                                          title: const Text('确认删除'),
-                                          content: Text('确定要删除词语"${pair.wordText}"吗？'),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () => Navigator.pop(context),
-                                              child: const Text('取消'),
-                                            ),
-                                            TextButton(
-                                              onPressed: () {
-                                                Navigator.pop(context);
-                                                // TODO: 实现删除多对多关系的逻辑
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('多对多删除功能待实现')),
-                                                );
-                                              },
-                                              child: const Text('删除'),
-                                            ),
-                                          ],
+                                  trailing: _isSelectionMode 
+                                      ? null
+                                      : IconButton(
+                                          icon: const Icon(Icons.delete),
+                                          onPressed: () {
+                                            showDialog(
+                                              context: context,
+                                              builder: (context) => AlertDialog(
+                                                title: const Text('确认删除'),
+                                                content: Text('确定要删除词语"${pair.wordText}"吗？'),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () => Navigator.pop(context),
+                                                    child: const Text('取消'),
+                                                  ),
+                                                  TextButton(
+                                                    onPressed: () {
+                                                      Navigator.pop(context);
+                                                      _deleteWordMeaningPair(pair);
+                                                    },
+                                                    child: const Text('删除'),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
                                         ),
-                                      );
-                                    },
-                                  ),
+                                  onTap: _isSelectionMode 
+                                      ? () => _toggleItemSelection(index)
+                                      : null,
                                 ),
                               );
                             } else {
                               final wordItem = _wordItems[index];
+                              final isSelected = _selectedItems.contains(index);
                               return Card(
                                 margin: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                   vertical: 4,
                                 ),
+                                color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
                                 child: ListTile(
+                                  leading: _isSelectionMode
+                                      ? Checkbox(
+                                          value: isSelected,
+                                          onChanged: (value) => _toggleItemSelection(index),
+                                        )
+                                      : null,
                                   title: Text(
                                     wordItem.word,
                                     style: const TextStyle(
@@ -355,31 +510,36 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   ),
                                   subtitle: Text(wordItem.meaning),
-                                  trailing: IconButton(
-                                    icon: const Icon(Icons.delete),
-                                    onPressed: () {
-                                      showDialog(
-                                        context: context,
-                                        builder: (context) => AlertDialog(
-                                          title: const Text('确认删除'),
-                                          content: Text('确定要删除词语"${wordItem.word}"吗？'),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () => Navigator.pop(context),
-                                              child: const Text('取消'),
-                                            ),
-                                            TextButton(
-                                              onPressed: () {
-                                                Navigator.pop(context);
-                                                _deleteWordItem(wordItem.id!);
-                                              },
-                                              child: const Text('删除'),
-                                            ),
-                                          ],
+                                  trailing: _isSelectionMode 
+                                      ? null
+                                      : IconButton(
+                                          icon: const Icon(Icons.delete),
+                                          onPressed: () {
+                                            showDialog(
+                                              context: context,
+                                              builder: (context) => AlertDialog(
+                                                title: const Text('确认删除'),
+                                                content: Text('确定要删除词语"${wordItem.word}"吗？'),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () => Navigator.pop(context),
+                                                    child: const Text('取消'),
+                                                  ),
+                                                  TextButton(
+                                                    onPressed: () {
+                                                      Navigator.pop(context);
+                                                      _deleteWordItem(wordItem.id!);
+                                                    },
+                                                    child: const Text('删除'),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
                                         ),
-                                      );
-                                    },
-                                  ),
+                                  onTap: _isSelectionMode 
+                                      ? () => _toggleItemSelection(index)
+                                      : null,
                                 ),
                               );
                             }

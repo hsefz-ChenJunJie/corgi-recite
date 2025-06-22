@@ -467,4 +467,87 @@ class DatabaseHelper {
     final words = await getWordsByMeaningId(meaning.id!);
     return words.map((word) => WordMeaningPair(word: word, meaning: meaning)).toList();
   }
+
+  // 删除特定的词语-意项关联关系
+  Future<bool> deleteWordMeaningPair(int wordId, int meaningId) async {
+    final db = await database;
+    
+    await db.transaction((txn) async {
+      // 删除关联关系
+      await txn.delete(
+        'word_meanings',
+        where: 'word_id = ? AND meaning_id = ?',
+        whereArgs: [wordId, meaningId],
+      );
+      
+      // 检查词语是否还有其他关联，如果没有则删除词语
+      final wordMeanings = await txn.query(
+        'word_meanings',
+        where: 'word_id = ?',
+        whereArgs: [wordId],
+      );
+      
+      if (wordMeanings.isEmpty) {
+        await txn.delete('words', where: 'id = ?', whereArgs: [wordId]);
+      }
+      
+      // 检查意项是否还有其他关联，如果没有则删除意项
+      final meaningWords = await txn.query(
+        'word_meanings',
+        where: 'meaning_id = ?',
+        whereArgs: [meaningId],
+      );
+      
+      if (meaningWords.isEmpty) {
+        await txn.delete('meanings', where: 'id = ?', whereArgs: [meaningId]);
+      }
+    });
+    
+    return true;
+  }
+
+  // 批量删除词语-意项关联关系
+  Future<int> deleteWordMeaningPairs(List<WordMeaningPair> pairs) async {
+    final db = await database;
+    int deletedCount = 0;
+    
+    await db.transaction((txn) async {
+      for (final pair in pairs) {
+        // 删除关联关系
+        final deletedRelations = await txn.delete(
+          'word_meanings',
+          where: 'word_id = ? AND meaning_id = ?',
+          whereArgs: [pair.word.id, pair.meaning.id],
+        );
+        
+        if (deletedRelations > 0) {
+          deletedCount++;
+        }
+        
+        // 检查词语是否还有其他关联，如果没有则删除词语
+        final wordMeanings = await txn.query(
+          'word_meanings',
+          where: 'word_id = ?',
+          whereArgs: [pair.word.id],
+        );
+        
+        if (wordMeanings.isEmpty) {
+          await txn.delete('words', where: 'id = ?', whereArgs: [pair.word.id]);
+        }
+        
+        // 检查意项是否还有其他关联，如果没有则删除意项
+        final meaningWords = await txn.query(
+          'word_meanings',
+          where: 'meaning_id = ?',
+          whereArgs: [pair.meaning.id],
+        );
+        
+        if (meaningWords.isEmpty) {
+          await txn.delete('meanings', where: 'id = ?', whereArgs: [pair.meaning.id]);
+        }
+      }
+    });
+    
+    return deletedCount;
+  }
 }
