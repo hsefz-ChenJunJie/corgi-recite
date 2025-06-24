@@ -7,7 +7,9 @@
       "mcp__promptx__promptx_remember",
       "mcp__promptx__promptx_recall",
       "Bash(grep:*)",
-      "Bash(flutter analyze:*)"
+      "Bash(flutter analyze:*)",
+      "Bash(source ~/.bashrc)",
+      "Bash(flutter:*)"
     ],
     "deny": []
   }

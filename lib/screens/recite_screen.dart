@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/word_item.dart';
 import '../config/app_config.dart';
-import 'quiz_screen.dart';
+import 'smart_quiz_screen.dart';
 
 class ReciteScreen extends StatefulWidget {
   final List<WordItem> wordItems;
@@ -116,9 +116,9 @@ class _ReciteScreenState extends State<ReciteScreen> {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => QuizScreen(
+                    builder: (context) => SmartQuizScreen(
                       wordItems: widget.wordItems, // 这个参数在恢复时不会被使用
-                      savedProgress: widget.savedQuizProgress,
+                      // TODO: 需要支持savedProgress恢复功能
                     ),
                   ),
                 );
@@ -134,10 +134,9 @@ class _ReciteScreenState extends State<ReciteScreen> {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => QuizScreen(
+                    builder: (context) => SmartQuizScreen(
                       wordItems: widget.wordItems,
-                      isBidirectional: true,
-                      isRandomQuiz: false,
+                      isBidirectionalQuiz: true,
                     ),
                   ),
                 );

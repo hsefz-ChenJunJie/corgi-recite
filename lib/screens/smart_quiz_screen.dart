@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import '../services/quiz_service.dart';
 import '../services/context_quiz_service.dart';
+import '../services/context_parser.dart';
 import '../config/app_config.dart';
 import 'recite_screen.dart';
 import '../models/word_item.dart';
 import '../models/word_meaning_pair.dart';
+import '../models/word.dart';
+import '../models/meaning.dart';
+import '../database/database_helper.dart';
 
 class SmartQuizScreen extends StatefulWidget {
   final int? quizCount;
@@ -27,18 +30,17 @@ class SmartQuizScreen extends StatefulWidget {
 }
 
 class _SmartQuizScreenState extends State<SmartQuizScreen> {
-  final QuizService _quizService = QuizService();
   final ContextQuizService _contextQuizService = ContextQuizService();
   final List<TextEditingController> _controllers = [];
   final List<FocusNode> _focusNodes = [];
   
-  List<QuizItem> _quizItems = [];
+  List<SmartQuizItem> _quizItems = [];
   int _currentIndex = 0;
   int _correctCount = 0;
   bool _isLoading = true;
   bool _isAnswered = false;
   bool _isCorrect = false;
-  final List<QuizItem> _incorrectItems = [];
+  final List<SmartQuizItem> _incorrectItems = [];
 
   @override
   void initState() {
@@ -59,18 +61,20 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
 
   Future<void> _loadQuizItems() async {
     try {
-      List<QuizItem> items;
+      List<SmartQuizItem> items;
       
       if (widget.isSpecificQuiz && widget.specificPairs != null) {
-        // 指定抽查模式：使用指定的词语-意项对进行测试
-        items = await _quizService.getSpecificQuizItems(widget.specificPairs!);
+        // 指定抽查模式：使用指定的词语-意项对进行单向测试（意项→词语）
+        items = await _contextQuizService.generateRandomQuizItems(widget.specificPairs!);
       } else if (widget.isBidirectionalQuiz && widget.wordItems != null) {
         // 双向测试模式：使用新添加的词语进行双向测试
-        items = await _quizService.getBidirectionalQuizItems(widget.wordItems!);
+        final pairs = await _convertWordItemsToPairs(widget.wordItems!);
+        items = await _contextQuizService.generateSmartQuizItems(pairs);
       } else {
-        // 随机抽查模式：默认使用意项到词语的测试模式
+        // 随机抽查模式：只生成意项→词语的单向测试
         final count = widget.quizCount ?? 10; // 默认10个
-        items = await _quizService.getMeaningToWordsQuizItems(count);
+        final pairs = await _getRandomPairs(count);
+        items = await _contextQuizService.generateRandomQuizItems(pairs);
       }
       
       setState(() {
@@ -90,6 +94,42 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
     }
   }
 
+  /// 将WordItem列表转换为WordMeaningPair列表
+  Future<List<WordMeaningPair>> _convertWordItemsToPairs(List<WordItem> wordItems) async {
+    final dbHelper = DatabaseHelper();
+    final pairs = <WordMeaningPair>[];
+    
+    for (final item in wordItems) {
+      // 从数据库获取或创建Word和Meaning，确保有正确的id
+      final word = await dbHelper.getWordByText(item.word) ?? 
+        Word(id: null, text: item.word, createdAt: item.createdAt, updatedAt: item.updatedAt);
+      final meaning = await dbHelper.getMeaningByText(item.meaning) ?? 
+        Meaning(id: null, text: item.meaning, createdAt: item.createdAt, updatedAt: item.updatedAt);
+      
+      pairs.add(WordMeaningPair(word: word, meaning: meaning));
+    }
+    
+    return pairs;
+  }
+
+  /// 获取随机词语-意项配对
+  Future<List<WordMeaningPair>> _getRandomPairs(int count) async {
+    final pairs = await DatabaseHelper().getAllWordMeaningPairs();
+    if (pairs.isEmpty) return [];
+    
+    pairs.shuffle();
+    return pairs.take(count).toList();
+  }
+
+  /// 获取当前测试项需要的输入框数量
+  int _getInputCount(SmartQuizItem item) {
+    if (item.quizType == QuizType.blank && item.blankQuiz != null) {
+      return item.blankQuiz!.blanks.length;
+    } else {
+      return 1; // 传统题目只需要一个输入框
+    }
+  }
+
   void _setupCurrentQuestion() {
     // 清理旧的控制器
     for (final controller in _controllers) {
@@ -103,7 +143,7 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
 
     if (_currentIndex < _quizItems.length) {
       final currentItem = _quizItems[_currentIndex];
-      final inputCount = currentItem.inputCount;
+      final inputCount = _getInputCount(currentItem);
       
       for (int i = 0; i < inputCount; i++) {
         _controllers.add(TextEditingController());
@@ -130,7 +170,10 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
     final currentItem = _quizItems[_currentIndex];
     final userAnswers = _controllers.map((c) => c.text).toList();
     
-    final isCorrect = _quizService.validateAnswer(currentItem, userAnswers);
+    // 使用上下文感知验证，根据题目类型决定传递字符串还是列表
+    final userAnswer = currentItem.quizType == QuizType.blank ? userAnswers : userAnswers.first;
+    final result = _contextQuizService.validateAnswer(currentItem, userAnswer);
+    final isCorrect = result.isCorrect;
     
     setState(() {
       _isAnswered = true;
@@ -202,15 +245,36 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
     );
   }
 
-  String _getLabelText(QuizItem item, int index) {
-    switch (item.type) {
-      case QuizItemType.meaningToWords:
-        return '词语 ${index + 1}';
-      case QuizItemType.wordToMeanings:
-        return '意项 ${index + 1}';
-      case QuizItemType.wordToMeaning:
-        return '答案';
+  String _getLabelText(SmartQuizItem item, int index) {
+    if (item.quizType == QuizType.blank && item.blankQuiz != null) {
+      final blankAnswer = item.blankQuiz!.blanks[index];
+      return blankAnswer.hint ?? '答案 ${index + 1}';
+    } else {
+      return '答案';
     }
+  }
+
+  /// 获取显示文本
+  String _getDisplayText(SmartQuizItem item) {
+    if (item.quizType == QuizType.blank && item.blankQuiz != null) {
+      return item.blankQuiz!.template;
+    } else {
+      return item.question;
+    }
+  }
+
+  /// 获取问题提示
+  String _getQuestionHint(SmartQuizItem item) {
+    if (item.quizType == QuizType.blank && item.blankQuiz != null) {
+      return '请根据模板填入合适的内容：';
+    } else {
+      return '请输入对应的${item.direction == QuizDirection.wordToMeaning ? '意项' : '词语'}：';
+    }
+  }
+
+  /// 是否需要多个输入框
+  bool _needsMultipleInputs(SmartQuizItem item) {
+    return item.quizType == QuizType.blank && item.blankQuiz != null && item.blankQuiz!.blanks.length > 1;
   }
 
   void _handleBidirectionalError() {
@@ -248,27 +312,14 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
     final errorItem = _incorrectItems.last;
     final incorrectWordItems = <WordItem>[];
     
-    if (errorItem.type == QuizItemType.meaningToWords) {
-      // 意项到词语：为每个词语创建WordItem
-      for (final word in errorItem.requiredWords) {
-        incorrectWordItems.add(WordItem(
-          word: word.text,
-          meaning: errorItem.meaning!.text,
-          createdAt: word.createdAt,
-          updatedAt: word.updatedAt,
-        ));
-      }
-    } else if (errorItem.type == QuizItemType.wordToMeanings) {
-      // 词语到意项：为每个意项创建WordItem
-      for (final meaning in errorItem.requiredMeanings) {
-        incorrectWordItems.add(WordItem(
-          word: errorItem.word!.text,
-          meaning: meaning.text,
-          createdAt: errorItem.word!.createdAt,
-          updatedAt: errorItem.word!.updatedAt,
-        ));
-      }
-    }
+    // 从SmartQuizItem的pair中提取WordItem
+    final pair = errorItem.pair;
+    incorrectWordItems.add(WordItem(
+      word: pair.word.text,
+      meaning: pair.meaning.text,
+      createdAt: pair.createdAt,
+      updatedAt: pair.updatedAt,
+    ));
 
     if (incorrectWordItems.isNotEmpty) {
       Navigator.push(
@@ -310,31 +361,17 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
   }
 
   void _startReviewIncorrectItems() {
-    // 将错误的QuizItem转换为WordItem供背诵界面使用
+    // 将错误的SmartQuizItem转换为WordItem供背诵界面使用
     final incorrectWordItems = <WordItem>[];
     
     for (final item in _incorrectItems) {
-      if (item.type == QuizItemType.meaningToWords) {
-        // 意项到词语：为每个词语创建WordItem
-        for (final word in item.requiredWords) {
-          incorrectWordItems.add(WordItem(
-            word: word.text,
-            meaning: item.meaning!.text,
-            createdAt: word.createdAt,
-            updatedAt: word.updatedAt,
-          ));
-        }
-      } else if (item.type == QuizItemType.wordToMeanings) {
-        // 词语到意项：为每个意项创建WordItem
-        for (final meaning in item.requiredMeanings) {
-          incorrectWordItems.add(WordItem(
-            word: item.word!.text,
-            meaning: meaning.text,
-            createdAt: item.word!.createdAt,
-            updatedAt: item.word!.updatedAt,
-          ));
-        }
-      }
+      final pair = item.pair;
+      incorrectWordItems.add(WordItem(
+        word: pair.word.text,
+        meaning: pair.meaning.text,
+        createdAt: pair.createdAt,
+        updatedAt: pair.updatedAt,
+      ));
     }
 
     if (incorrectWordItems.isNotEmpty) {
@@ -398,7 +435,7 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      currentItem.displayText,
+                      _getDisplayText(currentItem),
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -407,11 +444,11 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      currentItem.questionHint,
+                      _getQuestionHint(currentItem),
                       style: const TextStyle(fontSize: 16),
                     ),
                     const SizedBox(height: 16),
-                    if (currentItem.needsMultipleInputs) ...[
+                    if (_needsMultipleInputs(currentItem)) ...[
                       // 多个输入框
                       for (int i = 0; i < _controllers.length; i++)
                         Padding(
@@ -473,7 +510,7 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
                             ),
                             if (!_isCorrect) ...[
                               const SizedBox(height: 8),
-                              Text('正确答案: ${currentItem.expectedAnswerText}'),
+                              Text('正确答案: ${currentItem.expectedAnswer}'),
                             ],
                           ],
                         ),

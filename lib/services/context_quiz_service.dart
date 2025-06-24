@@ -7,15 +7,19 @@ import 'context_parser.dart';
 class ContextQuizService {
   final DatabaseHelper _dbHelper = DatabaseHelper();
 
-  /// 为词语-意项对生成智能测试项
+  /// 为词语-意项对生成智能测试项（双向测试）
   Future<List<SmartQuizItem>> generateSmartQuizItems(List<WordMeaningPair> pairs) async {
     final quizItems = <SmartQuizItem>[];
 
     for (final pair in pairs) {
       // 检查词语是否有上下文信息
-      final wordContext = await _dbHelper.getContextInfoByWordId(pair.word.id!);
+      final wordContext = pair.word.id != null 
+        ? await _dbHelper.getContextInfoByWordId(pair.word.id!) 
+        : null;
       // 检查意项是否有上下文信息
-      final meaningContext = await _dbHelper.getContextInfoByMeaningId(pair.meaning.id!);
+      final meaningContext = pair.meaning.id != null 
+        ? await _dbHelper.getContextInfoByMeaningId(pair.meaning.id!) 
+        : null;
 
       // 生成词语→意项测试
       final wordToMeaning = _generateQuizItem(
@@ -41,6 +45,30 @@ class ContextQuizService {
     return quizItems;
   }
 
+  /// 为随机抽查生成单向测试项（只生成意项→词语）
+  Future<List<SmartQuizItem>> generateRandomQuizItems(List<WordMeaningPair> pairs) async {
+    final quizItems = <SmartQuizItem>[];
+
+    for (final pair in pairs) {
+      // 检查意项是否有上下文信息
+      final meaningContext = pair.meaning.id != null 
+        ? await _dbHelper.getContextInfoByMeaningId(pair.meaning.id!) 
+        : null;
+
+      // 只生成意项→词语测试
+      final meaningToWord = _generateQuizItem(
+        question: pair.meaning.text,
+        answer: pair.word.text,
+        context: meaningContext,
+        direction: QuizDirection.meaningToWord,
+        pair: pair,
+      );
+      quizItems.add(meaningToWord);
+    }
+
+    return quizItems;
+  }
+
   /// 生成单个智能测试项
   SmartQuizItem _generateQuizItem({
     required String question,
@@ -49,13 +77,27 @@ class ContextQuizService {
     required QuizDirection direction,
     required WordMeaningPair pair,
   }) {
-    if (context != null) {
-      // 有上下文信息，生成填空题
+    // 根据方向和上下文信息调整question和answer的显示
+    String displayQuestion = question;
+    String displayAnswer = answer;
+    
+    if (context != null && context.partOfSpeech != null) {
+      if (direction == QuizDirection.wordToMeaning) {
+        // 词语→意项：在问题中显示词性
+        displayQuestion = '$question (${context.partOfSpeech})';
+      } else {
+        // 意项→词语：在答案中包含词性信息，但问题显示时不包含词性
+        displayAnswer = '$answer (${context.partOfSpeech})';
+      }
+    }
+    
+    if (context != null && (context.placeholders.isNotEmpty || context.prepositions.isNotEmpty || context.keywords.isNotEmpty)) {
+      // 有其他上下文信息（非纯词性），生成填空题
       final blankQuiz = ContextParser.generateBlankQuiz(context, direction);
       return SmartQuizItem(
-        id: '${pair.word.id}_${pair.meaning.id}_${direction.name}',
-        question: question,
-        expectedAnswer: answer,
+        id: '${pair.word.id ?? pair.word.text.hashCode}_${pair.meaning.id ?? pair.meaning.text.hashCode}_${direction.name}',
+        question: displayQuestion,
+        expectedAnswer: displayAnswer,
         quizType: QuizType.blank,
         blankQuiz: blankQuiz,
         direction: direction,
@@ -63,11 +105,11 @@ class ContextQuizService {
         context: context,
       );
     } else {
-      // 无上下文信息，使用传统问答
+      // 无复杂上下文信息（只有词性或无上下文），使用传统问答
       return SmartQuizItem(
-        id: '${pair.word.id}_${pair.meaning.id}_${direction.name}',
-        question: question,
-        expectedAnswer: answer,
+        id: '${pair.word.id ?? pair.word.text.hashCode}_${pair.meaning.id ?? pair.meaning.text.hashCode}_${direction.name}',
+        question: displayQuestion,
+        expectedAnswer: displayAnswer,
         quizType: QuizType.traditional,
         direction: direction,
         pair: pair,
@@ -125,7 +167,17 @@ class ContextQuizService {
 
   /// 比较答案
   bool _compareAnswers(String userAnswer, String correctAnswer) {
-    return userAnswer.trim().toLowerCase() == correctAnswer.trim().toLowerCase();
+    final userClean = userAnswer.trim().toLowerCase();
+    final correctClean = correctAnswer.trim().toLowerCase();
+    
+    // 直接匹配
+    if (userClean == correctClean) return true;
+    
+    // 如果正确答案包含词性，也尝试匹配不包含词性的版本
+    final correctWithoutPos = correctClean.replaceAll(RegExp(r'\s*\([^)]*\)'), '');
+    if (userClean == correctWithoutPos) return true;
+    
+    return false;
   }
 
   /// 获取测试统计信息

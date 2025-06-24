@@ -149,10 +149,7 @@ class ContextParser {
 
   /// 处理词语→意项的填空策略
   static String _processWordToMeaning(ContextInfo contextInfo, String template, List<BlankAnswer> blanks, int blankIndex) {
-    // 1. 词性：任何默写中都显示，不要求填空
-    if (contextInfo.partOfSpeech != null) {
-      template = '$template (${contextInfo.partOfSpeech})';
-    }
+    // 词性现在在ContextQuizService中处理，这里不再处理
 
     // 2. 不定代词：给出答案中的不定代词，只要求填空其他内容
     // 不定代词在词语→意项中直接显示，但需要填空其他内容
@@ -201,10 +198,7 @@ class ContextParser {
 
   /// 处理意项→词语的填空策略
   static String _processMeaningToWord(ContextInfo contextInfo, String template, List<BlankAnswer> blanks, int blankIndex) {
-    // 1. 词性：任何默写中都显示，不要求填空
-    if (contextInfo.partOfSpeech != null) {
-      template = '$template (${contextInfo.partOfSpeech})';
-    }
+    // 词性现在在ContextQuizService中处理，这里不再处理
 
     // 2. 不定代词：给出答案中的不定代词，只要求填空其他内容
     // 不定代词在意项→词语中也直接显示，不需要填空
