@@ -32,10 +32,11 @@ class ContextQuizService {
       quizItems.add(wordToMeaning);
 
       // 生成意项→词语测试
+      // 修复：意项→词语测试时应该使用词语的上下文信息，因为我们要填空的是词语
       final meaningToWord = _generateQuizItem(
         question: pair.meaning.text,
         answer: pair.word.text,
-        context: meaningContext,
+        context: wordContext, // 使用词语的上下文信息
         direction: QuizDirection.meaningToWord,
         pair: pair,
       );
@@ -50,16 +51,16 @@ class ContextQuizService {
     final quizItems = <SmartQuizItem>[];
 
     for (final pair in pairs) {
-      // 检查意项是否有上下文信息
-      final meaningContext = pair.meaning.id != null 
-        ? await _dbHelper.getContextInfoByMeaningId(pair.meaning.id!) 
+      // 修复：意项→词语测试时应该检查词语的上下文信息，因为我们要填空的是词语
+      final wordContext = pair.word.id != null 
+        ? await _dbHelper.getContextInfoByWordId(pair.word.id!) 
         : null;
 
       // 只生成意项→词语测试
       final meaningToWord = _generateQuizItem(
         question: pair.meaning.text,
         answer: pair.word.text,
-        context: meaningContext,
+        context: wordContext, // 使用词语的上下文信息
         direction: QuizDirection.meaningToWord,
         pair: pair,
       );
@@ -81,31 +82,21 @@ class ContextQuizService {
     String displayQuestion = question;
     String displayAnswer = answer;
     
+    // 处理词性显示：根据用户要求，词性在任何测试中都应显示
     if (context != null && context.partOfSpeech != null) {
       if (direction == QuizDirection.wordToMeaning) {
         // 词语→意项：在问题中显示词性
         displayQuestion = '$question (${context.partOfSpeech})';
       } else {
-        // 意项→词语：在答案中包含词性信息，但问题显示时不包含词性
+        // 意项→词语：在问题中也显示词性，确保用户能看到词性信息
+        displayQuestion = '$question (词性: ${context.partOfSpeech})';
         displayAnswer = '$answer (${context.partOfSpeech})';
       }
     }
     
-    if (context != null && (context.placeholders.isNotEmpty || context.prepositions.isNotEmpty || context.keywords.isNotEmpty)) {
-      // 有其他上下文信息（非纯词性），生成填空题
-      final blankQuiz = ContextParser.generateBlankQuiz(context, direction);
-      return SmartQuizItem(
-        id: '${pair.word.id ?? pair.word.text.hashCode}_${pair.meaning.id ?? pair.meaning.text.hashCode}_${direction.name}',
-        question: displayQuestion,
-        expectedAnswer: displayAnswer,
-        quizType: QuizType.blank,
-        blankQuiz: blankQuiz,
-        direction: direction,
-        pair: pair,
-        context: context,
-      );
-    } else {
-      // 无复杂上下文信息（只有词性或无上下文），使用传统问答
+    // 根据用户要求处理填空策略
+    if (direction == QuizDirection.wordToMeaning) {
+      // 词语→意项：显示所有信息，不进行填空，使用传统问答
       return SmartQuizItem(
         id: '${pair.word.id ?? pair.word.text.hashCode}_${pair.meaning.id ?? pair.meaning.text.hashCode}_${direction.name}',
         question: displayQuestion,
@@ -113,7 +104,35 @@ class ContextQuizService {
         quizType: QuizType.traditional,
         direction: direction,
         pair: pair,
+        context: context,
       );
+    } else {
+      // 意项→词语：根据上下文信息决定是否进行填空
+      if (context != null && (context.placeholders.isNotEmpty || context.prepositions.isNotEmpty)) {
+        // 有上下文信息（不定代词或介词），生成填空题
+        final blankQuiz = ContextParser.generateBlankQuiz(context, direction);
+        return SmartQuizItem(
+          id: '${pair.word.id ?? pair.word.text.hashCode}_${pair.meaning.id ?? pair.meaning.text.hashCode}_${direction.name}',
+          question: displayQuestion,
+          expectedAnswer: displayAnswer,
+          quizType: QuizType.blank,
+          blankQuiz: blankQuiz,
+          direction: direction,
+          pair: pair,
+          context: context,
+        );
+      } else {
+        // 无复杂上下文信息（只有词性或无上下文），使用传统问答
+        return SmartQuizItem(
+          id: '${pair.word.id ?? pair.word.text.hashCode}_${pair.meaning.id ?? pair.meaning.text.hashCode}_${direction.name}',
+          question: displayQuestion,
+          expectedAnswer: displayAnswer,
+          quizType: QuizType.traditional,
+          direction: direction,
+          pair: pair,
+          context: context,
+        );
+      }
     }
   }
 

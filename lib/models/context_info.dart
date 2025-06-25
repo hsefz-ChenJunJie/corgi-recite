@@ -1,12 +1,11 @@
 /// 上下文感知信息模型
-/// 支持四种元信息：不定代词（占位符）、介词、多关键词、词性
+/// 支持三种元信息：不定代词（占位符）、介词、词性
 class ContextInfo {
   final int? id;
   final String originalText;  // 原始文本（包含标记符号）
   final String displayText;   // 显示文本（去除标记符号）
   final List<Placeholder> placeholders;  // 占位符列表
   final List<Preposition> prepositions;  // 介词列表
-  final List<String> keywords;           // 关键词列表（多关键词用|分隔）
   final String? partOfSpeech;           // 词性
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -17,7 +16,6 @@ class ContextInfo {
     required this.displayText,
     required this.placeholders,
     required this.prepositions,
-    required this.keywords,
     this.partOfSpeech,
     required this.createdAt,
     required this.updatedAt,
@@ -30,7 +28,6 @@ class ContextInfo {
       'display_text': displayText,
       'placeholders': placeholders.map((p) => p.toMap()).toList(),
       'prepositions': prepositions.map((p) => p.toMap()).toList(),
-      'keywords': keywords,
       'part_of_speech': partOfSpeech,
       'created_at': createdAt.millisecondsSinceEpoch,
       'updated_at': updatedAt.millisecondsSinceEpoch,
@@ -48,7 +45,6 @@ class ContextInfo {
       prepositions: (map['prepositions'] as List?)
           ?.map((p) => Preposition.fromMap(p))
           .toList() ?? [],
-      keywords: List<String>.from(map['keywords'] ?? []),
       partOfSpeech: map['part_of_speech'],
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at']),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at']),
@@ -61,7 +57,6 @@ class ContextInfo {
     String? displayText,
     List<Placeholder>? placeholders,
     List<Preposition>? prepositions,
-    List<String>? keywords,
     String? partOfSpeech,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -72,7 +67,6 @@ class ContextInfo {
       displayText: displayText ?? this.displayText,
       placeholders: placeholders ?? this.placeholders,
       prepositions: prepositions ?? this.prepositions,
-      keywords: keywords ?? this.keywords,
       partOfSpeech: partOfSpeech ?? this.partOfSpeech,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -230,7 +224,6 @@ class BlankAnswer {
 enum BlankType {
   placeholder,   // 不定代词（占位符）
   preposition,   // 介词
-  keyword,       // 关键词
   partOfSpeech,  // 词性
   regular,       // 常规文本
 }

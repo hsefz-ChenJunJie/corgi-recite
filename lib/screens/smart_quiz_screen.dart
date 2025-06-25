@@ -277,6 +277,7 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
     return item.quizType == QuizType.blank && item.blankQuiz != null && item.blankQuiz!.blanks.length > 1;
   }
 
+
   void _handleBidirectionalError() {
     // 保存当前测试进度
     _saveQuizProgress();
@@ -434,14 +435,39 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      _getDisplayText(currentItem),
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
+                    // 对于填空题，分别显示问题和填空模板
+                    if (currentItem.quizType == QuizType.blank && currentItem.blankQuiz != null) ...[
+                      // 显示问题（意项）
+                      Text(
+                        '问题：${currentItem.question}',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
+                      const SizedBox(height: 16),
+                      // 显示填空模板
+                      Text(
+                        '填空：${currentItem.blankQuiz!.template}',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ] else ...[
+                      // 传统题目只显示问题
+                      Text(
+                        _getDisplayText(currentItem),
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     Text(
                       _getQuestionHint(currentItem),

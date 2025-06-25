@@ -7,11 +7,10 @@ enum QuizDirection {
 }
 
 /// 上下文感知输入格式解析器
-/// 支持四种元信息标记：
+/// 支持三种元信息标记：
 /// 1. 不定代词（占位符）：{something} {someone}
-/// 2. 介词：[in] [on] [at] 
-/// 3. 多关键词：word1|word2|word3
-/// 4. 词性：(n.) (v.) (adj.)
+/// 2. 介词：[in] [on] [at]
+/// 3. 词性：(n.) (v.) (adj.)
 class ContextParser {
   
   /// 解析输入文本，提取上下文信息
@@ -26,7 +25,6 @@ class ContextParser {
 
     final placeholders = <Placeholder>[];
     final prepositions = <Preposition>[];
-    final keywords = <String>[];
     String? partOfSpeech;
     String displayText = text;
     String processedText = text;
@@ -77,21 +75,9 @@ class ContextParser {
     processedText = processedText.replaceAllMapped(RegExp(r'\[([^\]]+)\]'), (match) => match.group(1)!);
     displayText = displayText.replaceAllMapped(RegExp(r'\[([^\]]+)\]'), (match) => match.group(1)!);
 
-    // 4. 解析多关键词：word1|word2|word3
-    final keywordMatches = RegExp(r'(\w+(?:\|\w+)+)').allMatches(processedText);
-    for (final match in keywordMatches) {
-      final keywordGroup = match.group(1)!;
-      final keywordList = keywordGroup.split('|');
-      keywords.addAll(keywordList);
-      
-      // 用第一个关键词替换整个组
-      processedText = processedText.replaceFirst(keywordGroup, keywordList.first);
-      displayText = displayText.replaceFirst(keywordGroup, keywordList.first);
-    }
 
     final hasContext = placeholders.isNotEmpty || 
                       prepositions.isNotEmpty || 
-                      keywords.isNotEmpty || 
                       partOfSpeech != null;
 
     if (!hasContext) {
@@ -107,7 +93,6 @@ class ContextParser {
       displayText: displayText.trim(),
       placeholders: placeholders,
       prepositions: prepositions,
-      keywords: keywords,
       partOfSpeech: partOfSpeech,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
@@ -148,69 +133,19 @@ class ContextParser {
   }
 
   /// 处理词语→意项的填空策略
+  /// 根据用户要求：词语→意项应显示所有信息，不进行填空
   static String _processWordToMeaning(ContextInfo contextInfo, String template, List<BlankAnswer> blanks, int blankIndex) {
-    // 词性现在在ContextQuizService中处理，这里不再处理
-
-    // 2. 不定代词：给出答案中的不定代词，只要求填空其他内容
-    // 不定代词在词语→意项中直接显示，但需要填空其他内容
-    
-    // 3. 介词：在词语→意项中显示介词，不需要填空
-    
-    // 4. 多关键词：在词语→意项中显示所有关键词，不需要填空
-    
-    // 对于词语→意项，需要根据不定代词规则特殊处理
-    if (contextInfo.placeholders.isNotEmpty) {
-      // 有不定代词的情况：显示不定代词，填空其他内容
-      final wordsToBlank = _extractNonSpecialWords(contextInfo, template);
-      for (final word in wordsToBlank) {
-        if (template.contains(word)) {
-          template = template.replaceFirst(word, '___');
-          blanks.add(BlankAnswer(
-            index: blankIndex++,
-            correctAnswer: word,
-            acceptableAnswers: [word],
-            hint: '填写除不定代词外的内容',
-            type: BlankType.regular,
-          ));
-          break; // 只替换一个词，保持题目简洁
-        }
-      }
-    } else {
-      // 没有不定代词的情况：正常填空非特殊内容
-      final wordsToBlank = _extractNonSpecialWords(contextInfo, template);
-      for (final word in wordsToBlank) {
-        if (template.contains(word)) {
-          template = template.replaceFirst(word, '___');
-          blanks.add(BlankAnswer(
-            index: blankIndex++,
-            correctAnswer: word,
-            acceptableAnswers: [word],
-            hint: '填写内容',
-            type: BlankType.regular,
-          ));
-          break; // 只替换一个词
-        }
-      }
-    }
-    
+    // 词语→意项：显示所有信息，不进行填空
+    // 直接返回原模板，不生成任何填空题
     return template;
   }
 
   /// 处理意项→词语的填空策略
+  /// 根据用户要求：意项→词语进行差异化填空处理
   static String _processMeaningToWord(ContextInfo contextInfo, String template, List<BlankAnswer> blanks, int blankIndex) {
-    // 词性现在在ContextQuizService中处理，这里不再处理
-
-    // 2. 不定代词：给出答案中的不定代词，只要求填空其他内容
-    // 不定代词在意项→词语中也直接显示，不需要填空
-
-    // 3. 介词：在意项→词语中只需要默写介词和多关键词，直接给出其他非特殊内容
-    // 4. 多关键词：在意项→词语中显示除了多关键词和介词以外所有非特殊内容，只要求填空关键词和介词
     
-    // 按照用户要求的策略实现
-    if (contextInfo.prepositions.isNotEmpty || contextInfo.keywords.isNotEmpty) {
-      // 有介词或多关键词的情况
-      
-      // 首先处理介词填空
+    if (contextInfo.prepositions.isNotEmpty) {
+      // 有介词的情况：只需要填空介词，其他内容直接显示
       for (final preposition in contextInfo.prepositions) {
         if (template.contains(preposition.content)) {
           template = template.replaceFirst(preposition.content, '___');
@@ -221,30 +156,11 @@ class ContextParser {
             hint: '介词',
             type: BlankType.preposition,
           ));
+          break; // 只替换第一个介词
         }
       }
-      
-      // 然后处理多关键词填空
-      if (contextInfo.keywords.isNotEmpty) {
-        for (final keyword in contextInfo.keywords) {
-          if (template.contains(keyword)) {
-            template = template.replaceFirst(keyword, '___');
-            blanks.add(BlankAnswer(
-              index: blankIndex++,
-              correctAnswer: keyword,
-              acceptableAnswers: contextInfo.keywords,
-              hint: '关键词',
-              type: BlankType.keyword,
-            ));
-            break; // 只替换第一个出现的关键词
-          }
-        }
-      }
-      
-      // 对于有介词或多关键词的情况，其他非特殊内容直接给出，不需要填空
-      
     } else if (contextInfo.placeholders.isNotEmpty) {
-      // 只有不定代词的情况：给出不定代词，填空其他内容
+      // 只有不定代词的情况：显示不定代词，填空其他内容
       final wordsToBlank = _extractNonSpecialWords(contextInfo, template);
       for (final word in wordsToBlank) {
         if (template.contains(word)) {
@@ -256,7 +172,7 @@ class ContextParser {
             hint: '填写除不定代词外的内容',
             type: BlankType.regular,
           ));
-          break; // 只替换一个词，保持题目简洁
+          break; // 只替换一个词
         }
       }
     } else {
@@ -310,22 +226,6 @@ class ContextParser {
       ));
     }
 
-    // 3. 处理关键词
-    if (contextInfo.keywords.isNotEmpty) {
-      for (final keyword in contextInfo.keywords) {
-        if (template.contains(keyword)) {
-          template = template.replaceFirst(keyword, '___');
-          blanks.add(BlankAnswer(
-            index: blankIndex++,
-            correctAnswer: keyword,
-            acceptableAnswers: contextInfo.keywords,
-            hint: '关键词',
-            type: BlankType.keyword,
-          ));
-          break; // 只替换第一个出现的关键词
-        }
-      }
-    }
 
     // 4. 处理词性
     if (contextInfo.partOfSpeech != null) {
@@ -446,8 +346,6 @@ class ContextParser {
       specialContents.add(preposition.content);
     }
     
-    // 添加关键词内容
-    specialContents.addAll(contextInfo.keywords);
     
     // 分割template为单词
     final words = template.split(RegExp(r'\s+'))

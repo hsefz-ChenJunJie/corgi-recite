@@ -224,7 +224,6 @@ class _AddWordScreenState extends State<AddWordScreen> {
                     ),
                     Text('• 占位符：give {something} [to] {someone}=给某人某物'),
                     Text('• 介词：look [at] the sky=看天空'),
-                    Text('• 多关键词：big|large|huge=巨大的'),
                     Text('• 词性：run (v.)=跑步'),
                     SizedBox(height: 8),
                     Text('注意：系统会自动处理重复的词语和意项，建立多对多关系'),
