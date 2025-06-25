@@ -212,15 +212,19 @@ class _ContextQuizScreenState extends State<ContextQuizScreen> {
 
   void _handleIncorrectAnswer() {
     // 立即进入重新背诵
-    final incorrectPairs = _incorrectItems.map((item) => item.pair).toList();
+    final incorrectWordItems = <WordItem>[];
     
-    // 将WordMeaningPair转换为WordItem以兼容SmartReciteScreen
-    final incorrectWordItems = incorrectPairs.map((pair) => WordItem(
-      word: pair.wordText,
-      meaning: pair.meaningText,
-      createdAt: pair.createdAt,
-      updatedAt: pair.updatedAt,
-    )).toList();
+    // 将SmartQuizItem的pairs转换为WordItem以兼容SmartReciteScreen
+    for (final item in _incorrectItems) {
+      for (final pair in item.pairs) {
+        incorrectWordItems.add(WordItem(
+          word: pair.word.text,
+          meaning: pair.meaning.text,
+          createdAt: pair.createdAt,
+          updatedAt: pair.updatedAt,
+        ));
+      }
+    }
     
     Navigator.push(
       context,
@@ -349,15 +353,19 @@ class _ContextQuizScreenState extends State<ContextQuizScreen> {
   }
 
   void _retestIncorrectItems() {
-    final incorrectPairs = _incorrectItems.map((item) => item.pair).toList();
+    final incorrectWordItems = <WordItem>[];
     
-    // 将WordMeaningPair转换为WordItem以兼容SmartReciteScreen
-    final incorrectWordItems = incorrectPairs.map((pair) => WordItem(
-      word: pair.wordText,
-      meaning: pair.meaningText,
-      createdAt: pair.createdAt,
-      updatedAt: pair.updatedAt,
-    )).toList();
+    // 将SmartQuizItem的pairs转换为WordItem以兼容SmartReciteScreen
+    for (final item in _incorrectItems) {
+      for (final pair in item.pairs) {
+        incorrectWordItems.add(WordItem(
+          word: pair.word.text,
+          meaning: pair.meaning.text,
+          createdAt: pair.createdAt,
+          updatedAt: pair.updatedAt,
+        ));
+      }
+    }
     
     Navigator.push(
       context,
@@ -373,7 +381,7 @@ class _ContextQuizScreenState extends State<ContextQuizScreen> {
           context,
           MaterialPageRoute(
             builder: (context) => ContextQuizScreen(
-              specificPairs: incorrectPairs,
+              specificPairs: _incorrectItems.expand((item) => item.pairs).toList(),
               isBidirectionalQuiz: true,
             ),
           ),

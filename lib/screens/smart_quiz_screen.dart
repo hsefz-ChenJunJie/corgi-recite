@@ -123,10 +123,23 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
 
   /// 获取当前测试项需要的输入框数量
   int _getInputCount(SmartQuizItem item) {
-    if (item.quizType == QuizType.blank && item.blankQuiz != null) {
-      return item.blankQuiz!.blanks.length;
+    if (item.quizType == QuizType.blank) {
+      // 检查是否有多个填空项（多特殊信息）
+      if (item.blankQuizItems != null && item.blankQuizItems!.isNotEmpty) {
+        int totalBlanks = 0;
+        for (final blankQuiz in item.blankQuizItems!) {
+          totalBlanks += blankQuiz.blanks.length;
+        }
+        return totalBlanks;
+      } else if (item.blankQuiz != null) {
+        // 单个填空项（向后兼容）
+        return item.blankQuiz!.blanks.length;
+      } else {
+        return 1; // 默认至少一个输入框
+      }
     } else {
-      return 1; // 传统题目只需要一个输入框
+      // 传统题目：如果有多个期望答案，则需要多个输入框
+      return item.expectedAnswers.length;
     }
   }
 
@@ -170,8 +183,20 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
     final currentItem = _quizItems[_currentIndex];
     final userAnswers = _controllers.map((c) => c.text).toList();
     
-    // 使用上下文感知验证，根据题目类型决定传递字符串还是列表
-    final userAnswer = currentItem.quizType == QuizType.blank ? userAnswers : userAnswers.first;
+    // 根据题目类型决定传递答案的格式
+    final dynamic userAnswer;
+    if (currentItem.quizType == QuizType.blank) {
+      // 填空题传递答案列表
+      userAnswer = userAnswers;
+    } else {
+      // 传统题目：如果有多个期望答案，传递答案列表；否则传递单个答案
+      if (currentItem.expectedAnswers.length > 1) {
+        userAnswer = userAnswers;
+      } else {
+        userAnswer = userAnswers.first;
+      }
+    }
+    
     final result = _contextQuizService.validateAnswer(currentItem, userAnswer);
     final isCorrect = result.isCorrect;
     
@@ -246,18 +271,58 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
   }
 
   String _getLabelText(SmartQuizItem item, int index) {
-    if (item.quizType == QuizType.blank && item.blankQuiz != null) {
-      final blankAnswer = item.blankQuiz!.blanks[index];
-      return blankAnswer.hint ?? '答案 ${index + 1}';
+    if (item.quizType == QuizType.blank) {
+      // 检查是否有多个填空项（多特殊信息）
+      if (item.blankQuizItems != null && item.blankQuizItems!.isNotEmpty) {
+        // 计算当前输入框属于哪个填空项
+        int currentBlankIndex = 0;
+        
+        for (int wordIdx = 0; wordIdx < item.blankQuizItems!.length; wordIdx++) {
+          final blankQuiz = item.blankQuizItems![wordIdx];
+          if (index < currentBlankIndex + blankQuiz.blanks.length) {
+            // 找到对应的填空项
+            final blankIndex = index - currentBlankIndex;
+            final blankAnswer = blankQuiz.blanks[blankIndex];
+            return blankAnswer.hint ?? '第${wordIdx + 1}个词语-答案${blankIndex + 1}';
+          }
+          currentBlankIndex += blankQuiz.blanks.length;
+        }
+        return '答案 ${index + 1}';
+      } else if (item.blankQuiz != null) {
+        // 单个填空项（向后兼容）
+        final blankAnswer = item.blankQuiz!.blanks[index];
+        return blankAnswer.hint ?? '答案 ${index + 1}';
+      } else {
+        return '答案 ${index + 1}';
+      }
     } else {
-      return '答案';
+      // 传统题目：如果有多个答案，显示编号
+      if (item.expectedAnswers.length > 1) {
+        return '答案 ${index + 1}';
+      } else {
+        return '答案';
+      }
     }
   }
 
   /// 获取显示文本
   String _getDisplayText(SmartQuizItem item) {
-    if (item.quizType == QuizType.blank && item.blankQuiz != null) {
-      return item.blankQuiz!.template;
+    if (item.quizType == QuizType.blank) {
+      // 检查是否有多个填空项（多特殊信息）
+      if (item.blankQuizItems != null && item.blankQuizItems!.isNotEmpty) {
+        // 显示多个填空模板
+        final templates = <String>[];
+        for (int i = 0; i < item.blankQuizItems!.length; i++) {
+          final blankQuiz = item.blankQuizItems![i];
+          templates.add('第${i + 1}个词语：${blankQuiz.template}');
+        }
+        return templates.join('\n');
+      } else if (item.blankQuiz != null) {
+        // 单个填空项（向后兼容）
+        return item.blankQuiz!.template;
+      } else {
+        return item.question;
+      }
     } else {
       return item.question;
     }
@@ -265,16 +330,29 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
 
   /// 获取问题提示
   String _getQuestionHint(SmartQuizItem item) {
-    if (item.quizType == QuizType.blank && item.blankQuiz != null) {
-      return '请根据模板填入合适的内容：';
+    if (item.quizType == QuizType.blank) {
+      // 检查是否有多个填空项（多特殊信息）
+      if (item.blankQuizItems != null && item.blankQuizItems!.isNotEmpty) {
+        final totalBlanks = _getInputCount(item);
+        return '请根据上述模板填入合适的内容（共$totalBlanks个空格）：';
+      } else if (item.blankQuiz != null) {
+        return '请根据模板填入合适的内容：';
+      } else {
+        return '请输入答案：';
+      }
     } else {
-      return '请输入对应的${item.direction == QuizDirection.wordToMeaning ? '意项' : '词语'}：';
+      final targetType = item.direction == QuizDirection.wordToMeaning ? '意项' : '词语';
+      if (item.expectedAnswers.length > 1) {
+        return '请输入所有对应的$targetType（共${item.expectedAnswers.length}个）：';
+      } else {
+        return '请输入对应的$targetType：';
+      }
     }
   }
 
   /// 是否需要多个输入框
   bool _needsMultipleInputs(SmartQuizItem item) {
-    return item.quizType == QuizType.blank && item.blankQuiz != null && item.blankQuiz!.blanks.length > 1;
+    return _getInputCount(item) > 1;
   }
 
 
@@ -313,14 +391,15 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
     final errorItem = _incorrectItems.last;
     final incorrectWordItems = <WordItem>[];
     
-    // 从SmartQuizItem的pair中提取WordItem
-    final pair = errorItem.pair;
-    incorrectWordItems.add(WordItem(
-      word: pair.word.text,
-      meaning: pair.meaning.text,
-      createdAt: pair.createdAt,
-      updatedAt: pair.updatedAt,
-    ));
+    // 从SmartQuizItem的pairs中提取WordItem
+    for (final pair in errorItem.pairs) {
+      incorrectWordItems.add(WordItem(
+        word: pair.word.text,
+        meaning: pair.meaning.text,
+        createdAt: pair.createdAt,
+        updatedAt: pair.updatedAt,
+      ));
+    }
 
     if (incorrectWordItems.isNotEmpty) {
       Navigator.push(
@@ -366,13 +445,14 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
     final incorrectWordItems = <WordItem>[];
     
     for (final item in _incorrectItems) {
-      final pair = item.pair;
-      incorrectWordItems.add(WordItem(
-        word: pair.word.text,
-        meaning: pair.meaning.text,
-        createdAt: pair.createdAt,
-        updatedAt: pair.updatedAt,
-      ));
+      for (final pair in item.pairs) {
+        incorrectWordItems.add(WordItem(
+          word: pair.word.text,
+          meaning: pair.meaning.text,
+          createdAt: pair.createdAt,
+          updatedAt: pair.updatedAt,
+        ));
+      }
     }
 
     if (incorrectWordItems.isNotEmpty) {

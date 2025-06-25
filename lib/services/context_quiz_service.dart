@@ -11,36 +11,16 @@ class ContextQuizService {
   Future<List<SmartQuizItem>> generateSmartQuizItems(List<WordMeaningPair> pairs) async {
     final quizItems = <SmartQuizItem>[];
 
-    for (final pair in pairs) {
-      // 检查词语是否有上下文信息
-      final wordContext = pair.word.id != null 
-        ? await _dbHelper.getContextInfoByWordId(pair.word.id!) 
-        : null;
-      // 检查意项是否有上下文信息
-      final meaningContext = pair.meaning.id != null 
-        ? await _dbHelper.getContextInfoByMeaningId(pair.meaning.id!) 
-        : null;
+    // 第一阶段：词语→意项测试（按词语分组）
+    final wordToMeaningsGroups = await _groupPairsByWord(pairs);
+    for (final group in wordToMeaningsGroups) {
+      quizItems.add(group);
+    }
 
-      // 生成词语→意项测试
-      final wordToMeaning = _generateQuizItem(
-        question: pair.word.text,
-        answer: pair.meaning.text,
-        context: wordContext,
-        direction: QuizDirection.wordToMeaning,
-        pair: pair,
-      );
-      quizItems.add(wordToMeaning);
-
-      // 生成意项→词语测试
-      // 修复：意项→词语测试时应该使用词语的上下文信息，因为我们要填空的是词语
-      final meaningToWord = _generateQuizItem(
-        question: pair.meaning.text,
-        answer: pair.word.text,
-        context: wordContext, // 使用词语的上下文信息
-        direction: QuizDirection.meaningToWord,
-        pair: pair,
-      );
-      quizItems.add(meaningToWord);
+    // 第二阶段：意项→词语测试（按意项分组）
+    final meaningToWordsGroups = await _groupPairsByMeaning(pairs);
+    for (final group in meaningToWordsGroups) {
+      quizItems.add(group);
     }
 
     return quizItems;
@@ -48,39 +28,106 @@ class ContextQuizService {
 
   /// 为随机抽查生成单向测试项（只生成意项→词语）
   Future<List<SmartQuizItem>> generateRandomQuizItems(List<WordMeaningPair> pairs) async {
-    final quizItems = <SmartQuizItem>[];
-
-    for (final pair in pairs) {
-      // 修复：意项→词语测试时应该检查词语的上下文信息，因为我们要填空的是词语
-      final wordContext = pair.word.id != null 
-        ? await _dbHelper.getContextInfoByWordId(pair.word.id!) 
-        : null;
-
-      // 只生成意项→词语测试
-      final meaningToWord = _generateQuizItem(
-        question: pair.meaning.text,
-        answer: pair.word.text,
-        context: wordContext, // 使用词语的上下文信息
-        direction: QuizDirection.meaningToWord,
-        pair: pair,
-      );
-      quizItems.add(meaningToWord);
-    }
-
-    return quizItems;
+    // 按意项分组，实现一对多智能测试
+    return await _groupPairsByMeaning(pairs);
   }
 
-  /// 生成单个智能测试项
-  SmartQuizItem _generateQuizItem({
+  /// 按词语分组生成词语→意项测试（一个词语对应多个意项的同页测试）
+  Future<List<SmartQuizItem>> _groupPairsByWord(List<WordMeaningPair> pairs) async {
+    final Map<String, List<WordMeaningPair>> wordGroups = {};
+    
+    // 按词语文本分组
+    for (final pair in pairs) {
+      final wordText = pair.word.text;
+      if (wordGroups.containsKey(wordText)) {
+        wordGroups[wordText]!.add(pair);
+      } else {
+        wordGroups[wordText] = [pair];
+      }
+    }
+
+    final List<SmartQuizItem> groupedItems = [];
+    for (final entry in wordGroups.entries) {
+      final wordText = entry.key;
+      final groupPairs = entry.value;
+      
+      // 使用第一个pair的词语信息作为代表
+      final representativePair = groupPairs.first;
+      final wordContext = representativePair.word.id != null 
+        ? await _dbHelper.getContextInfoByWordId(representativePair.word.id!) 
+        : null;
+
+      // 收集所有意项文本
+      final meanings = groupPairs.map((p) => p.meaning.text).toList();
+      
+      // 生成词语→意项的分组测试项
+      groupedItems.add(_generateGroupQuizItem(
+        question: wordText,
+        answers: meanings,
+        context: wordContext,
+        direction: QuizDirection.wordToMeaning,
+        pairs: groupPairs,
+      ));
+    }
+
+    return groupedItems;
+  }
+
+  /// 按意项分组生成意项→词语测试（一个意项对应多个词语的同页测试）
+  Future<List<SmartQuizItem>> _groupPairsByMeaning(List<WordMeaningPair> pairs) async {
+    final Map<String, List<WordMeaningPair>> meaningGroups = {};
+    
+    // 按意项文本分组
+    for (final pair in pairs) {
+      final meaningText = pair.meaning.text;
+      if (meaningGroups.containsKey(meaningText)) {
+        meaningGroups[meaningText]!.add(pair);
+      } else {
+        meaningGroups[meaningText] = [pair];
+      }
+    }
+
+    final List<SmartQuizItem> groupedItems = [];
+    for (final entry in meaningGroups.entries) {
+      final meaningText = entry.key;
+      final groupPairs = entry.value;
+      
+      // 收集所有词语文本和上下文信息
+      final words = <String>[];
+      final contexts = <ContextInfo?>[];
+      
+      for (final pair in groupPairs) {
+        words.add(pair.word.text);
+        final wordContext = pair.word.id != null 
+          ? await _dbHelper.getContextInfoByWordId(pair.word.id!) 
+          : null;
+        contexts.add(wordContext);
+      }
+      
+      // 生成意项→词语的分组测试项（支持多个特殊信息）
+      groupedItems.add(await _generateMultiContextQuizItem(
+        question: meaningText,
+        answers: words,
+        contexts: contexts,
+        direction: QuizDirection.meaningToWord,
+        pairs: groupPairs,
+      ));
+    }
+
+    return groupedItems;
+  }
+
+  /// 生成分组智能测试项（支持一对多）
+  SmartQuizItem _generateGroupQuizItem({
     required String question,
-    required String answer,
+    required List<String> answers,
     required ContextInfo? context,
     required QuizDirection direction,
-    required WordMeaningPair pair,
+    required List<WordMeaningPair> pairs,
   }) {
     // 根据方向和上下文信息调整question和answer的显示
     String displayQuestion = question;
-    String displayAnswer = answer;
+    List<String> displayAnswers = List.from(answers);
     
     // 处理词性显示：根据用户要求，词性在任何测试中都应显示
     if (context != null && context.partOfSpeech != null) {
@@ -90,7 +137,8 @@ class ContextQuizService {
       } else {
         // 意项→词语：在问题中也显示词性，确保用户能看到词性信息
         displayQuestion = '$question (词性: ${context.partOfSpeech})';
-        displayAnswer = '$answer (${context.partOfSpeech})';
+        // 为所有答案添加词性
+        displayAnswers = answers.map((answer) => '$answer (${context.partOfSpeech})').toList();
       }
     }
     
@@ -98,60 +146,193 @@ class ContextQuizService {
     if (direction == QuizDirection.wordToMeaning) {
       // 词语→意项：显示所有信息，不进行填空，使用传统问答
       return SmartQuizItem(
-        id: '${pair.word.id ?? pair.word.text.hashCode}_${pair.meaning.id ?? pair.meaning.text.hashCode}_${direction.name}',
+        id: _generateGroupId(pairs, direction),
         question: displayQuestion,
-        expectedAnswer: displayAnswer,
+        expectedAnswers: displayAnswers,
         quizType: QuizType.traditional,
         direction: direction,
-        pair: pair,
+        pairs: pairs,
         context: context,
       );
     } else {
       // 意项→词语：根据上下文信息决定是否进行填空
       if (context != null && (context.placeholders.isNotEmpty || context.prepositions.isNotEmpty)) {
         // 有上下文信息（不定代词或介词），生成填空题
+        // 对于分组填空，我们使用第一个答案生成填空模板
         final blankQuiz = ContextParser.generateBlankQuiz(context, direction);
         return SmartQuizItem(
-          id: '${pair.word.id ?? pair.word.text.hashCode}_${pair.meaning.id ?? pair.meaning.text.hashCode}_${direction.name}',
+          id: _generateGroupId(pairs, direction),
           question: displayQuestion,
-          expectedAnswer: displayAnswer,
+          expectedAnswers: displayAnswers,
           quizType: QuizType.blank,
           blankQuiz: blankQuiz,
           direction: direction,
-          pair: pair,
+          pairs: pairs,
           context: context,
         );
       } else {
         // 无复杂上下文信息（只有词性或无上下文），使用传统问答
         return SmartQuizItem(
-          id: '${pair.word.id ?? pair.word.text.hashCode}_${pair.meaning.id ?? pair.meaning.text.hashCode}_${direction.name}',
+          id: _generateGroupId(pairs, direction),
           question: displayQuestion,
-          expectedAnswer: displayAnswer,
+          expectedAnswers: displayAnswers,
           quizType: QuizType.traditional,
           direction: direction,
-          pair: pair,
+          pairs: pairs,
           context: context,
         );
       }
     }
   }
 
+  /// 生成分组ID
+  String _generateGroupId(List<WordMeaningPair> pairs, QuizDirection direction) {
+    final pairIds = pairs.map((p) => '${p.word.id ?? p.word.text.hashCode}_${p.meaning.id ?? p.meaning.text.hashCode}').join('_');
+    return '${pairIds}_${direction.name}';
+  }
+
+  /// 生成支持多个特殊信息的智能测试项
+  Future<SmartQuizItem> _generateMultiContextQuizItem({
+    required String question,
+    required List<String> answers,
+    required List<ContextInfo?> contexts,
+    required QuizDirection direction,
+    required List<WordMeaningPair> pairs,
+  }) async {
+    String displayQuestion = question;
+    List<String> displayAnswers = List.from(answers);
+    
+    // 检查是否有任何词语包含特殊信息（介词、不定代词）
+    final hasBlankContexts = contexts.any((context) => 
+      context != null && (context.placeholders.isNotEmpty || context.prepositions.isNotEmpty));
+    
+    // 检查是否有词性信息
+    final hasPartOfSpeech = contexts.any((context) => 
+      context != null && context.partOfSpeech != null);
+    
+    // 处理词性显示
+    if (hasPartOfSpeech && direction == QuizDirection.meaningToWord) {
+      // 在问题中显示所有词性信息（去重）
+      final partOfSpeeches = contexts
+          .where((context) => context?.partOfSpeech != null)
+          .map((context) => context!.partOfSpeech!)
+          .toSet()
+          .join('、');
+      if (partOfSpeeches.isNotEmpty) {
+        displayQuestion = '$question (词性: $partOfSpeeches)';
+      }
+    }
+    
+    if (direction == QuizDirection.wordToMeaning) {
+      // 词语→意项：显示所有信息，不进行填空，使用传统问答
+      return SmartQuizItem(
+        id: _generateGroupId(pairs, direction),
+        question: displayQuestion,
+        expectedAnswers: displayAnswers,
+        quizType: QuizType.traditional,
+        direction: direction,
+        pairs: pairs,
+        contexts: contexts,
+      );
+    } else {
+      // 意项→词语：检查是否需要填空
+      if (hasBlankContexts) {
+        // 有特殊信息，生成多个填空项
+        final List<BlankQuizItem> blankQuizItems = [];
+        final List<String> finalAnswers = [];
+        
+        for (int i = 0; i < answers.length; i++) {
+          final context = contexts[i];
+          final answer = answers[i];
+          
+          if (context != null && (context.placeholders.isNotEmpty || context.prepositions.isNotEmpty)) {
+            // 有特殊信息，生成填空项
+            final blankQuiz = ContextParser.generateBlankQuiz(context, direction);
+            blankQuizItems.add(blankQuiz);
+            // 对于填空项，期望答案需要包含词性信息（如果有）
+            if (context.partOfSpeech != null) {
+              finalAnswers.add('$answer (${context.partOfSpeech})');
+            } else {
+              finalAnswers.add(answer);
+            }
+          } else {
+            // 无特殊信息，但可能有词性，作为传统答案处理
+            if (context?.partOfSpeech != null) {
+              finalAnswers.add('$answer (${context!.partOfSpeech})');
+            } else {
+              finalAnswers.add(answer);
+            }
+          }
+        }
+        
+        return SmartQuizItem(
+          id: _generateGroupId(pairs, direction),
+          question: displayQuestion,
+          expectedAnswers: finalAnswers,
+          quizType: QuizType.blank,
+          blankQuizItems: blankQuizItems.isNotEmpty ? blankQuizItems : null,
+          direction: direction,
+          pairs: pairs,
+          contexts: contexts,
+        );
+      } else {
+        // 无特殊信息（只有词性或无上下文），使用传统问答
+        // 为有词性的答案添加词性标记
+        final List<String> finalAnswers = [];
+        for (int i = 0; i < answers.length; i++) {
+          final context = contexts[i];
+          final answer = answers[i];
+          if (context?.partOfSpeech != null) {
+            finalAnswers.add('$answer (${context!.partOfSpeech})');
+          } else {
+            finalAnswers.add(answer);
+          }
+        }
+        
+        return SmartQuizItem(
+          id: _generateGroupId(pairs, direction),
+          question: displayQuestion,
+          expectedAnswers: finalAnswers,
+          quizType: QuizType.traditional,
+          direction: direction,
+          pairs: pairs,
+          contexts: contexts,
+        );
+      }
+    }
+  }
+
+
   /// 验证答案
   QuizResult validateAnswer(SmartQuizItem quizItem, dynamic userAnswer) {
     switch (quizItem.quizType) {
       case QuizType.blank:
         if (userAnswer is List<String>) {
-          final validationResult = ContextParser.validateBlankAnswers(
-            quizItem.blankQuiz!,
-            userAnswer,
-          );
-          return QuizResult(
-            isCorrect: validationResult.isCorrect,
-            score: validationResult.correctCount / validationResult.totalCount,
-            feedback: validationResult.feedback,
-            correctAnswer: quizItem.expectedAnswer,
-            userAnswer: userAnswer.join(', '),
-          );
+          // 检查是否为多个填空项（多特殊信息）
+          if (quizItem.blankQuizItems != null && quizItem.blankQuizItems!.isNotEmpty) {
+            return _validateMultiBlankAnswers(quizItem, userAnswer);
+          } else if (quizItem.blankQuiz != null) {
+            // 单个填空项（向后兼容）
+            final validationResult = ContextParser.validateBlankAnswers(
+              quizItem.blankQuiz!,
+              userAnswer,
+            );
+            return QuizResult(
+              isCorrect: validationResult.isCorrect,
+              score: validationResult.correctCount / validationResult.totalCount,
+              feedback: validationResult.feedback,
+              correctAnswer: quizItem.expectedAnswer,
+              userAnswer: userAnswer.join(', '),
+            );
+          } else {
+            return QuizResult(
+              isCorrect: false,
+              score: 0.0,
+              feedback: '填空题数据不完整',
+              correctAnswer: quizItem.expectedAnswer,
+              userAnswer: userAnswer.join(', '),
+            );
+          }
         } else {
           return QuizResult(
             isCorrect: false,
@@ -163,15 +344,30 @@ class ContextQuizService {
         }
       
       case QuizType.traditional:
+        // 支持单个答案或多个答案
         if (userAnswer is String) {
-          final isCorrect = _compareAnswers(userAnswer, quizItem.expectedAnswer);
-          return QuizResult(
-            isCorrect: isCorrect,
-            score: isCorrect ? 1.0 : 0.0,
-            feedback: isCorrect ? '正确！' : '错误，正确答案是：${quizItem.expectedAnswer}',
-            correctAnswer: quizItem.expectedAnswer,
-            userAnswer: userAnswer,
-          );
+          // 单个答案模式
+          if (quizItem.expectedAnswers.length == 1) {
+            final isCorrect = _compareAnswers(userAnswer, quizItem.expectedAnswers.first);
+            return QuizResult(
+              isCorrect: isCorrect,
+              score: isCorrect ? 1.0 : 0.0,
+              feedback: isCorrect ? '正确！' : '错误，正确答案是：${quizItem.expectedAnswer}',
+              correctAnswer: quizItem.expectedAnswer,
+              userAnswer: userAnswer,
+            );
+          } else {
+            return QuizResult(
+              isCorrect: false,
+              score: 0.0,
+              feedback: '此题有多个答案，请分别输入所有答案',
+              correctAnswer: quizItem.expectedAnswer,
+              userAnswer: userAnswer,
+            );
+          }
+        } else if (userAnswer is List<String>) {
+          // 多个答案模式
+          return _validateMultipleAnswers(quizItem, userAnswer);
         } else {
           return QuizResult(
             isCorrect: false,
@@ -182,6 +378,113 @@ class ContextQuizService {
           );
         }
     }
+  }
+
+  /// 验证多个填空项的答案（多特殊信息）
+  QuizResult _validateMultiBlankAnswers(SmartQuizItem quizItem, List<String> userAnswers) {
+    final blankQuizItems = quizItem.blankQuizItems!;
+    int totalBlanks = 0;
+    int correctBlanks = 0;
+    List<String> feedbackMessages = [];
+    
+    // 计算总填空数量
+    for (final blankQuiz in blankQuizItems) {
+      totalBlanks += blankQuiz.blanks.length;
+    }
+    
+    // 检查用户答案数量
+    if (userAnswers.length != totalBlanks) {
+      return QuizResult(
+        isCorrect: false,
+        score: 0.0,
+        feedback: '答案数量不正确。需要${totalBlanks}个答案，您输入了${userAnswers.length}个。',
+        correctAnswer: quizItem.expectedAnswer,
+        userAnswer: userAnswers.join('、'),
+      );
+    }
+    
+    // 逐个验证每个填空项
+    int answerIndex = 0;
+    for (int i = 0; i < blankQuizItems.length; i++) {
+      final blankQuiz = blankQuizItems[i];
+      final blanksCount = blankQuiz.blanks.length;
+      
+      // 提取当前填空项对应的用户答案
+      final currentAnswers = userAnswers.sublist(answerIndex, answerIndex + blanksCount);
+      
+      // 验证当前填空项
+      final validationResult = ContextParser.validateBlankAnswers(blankQuiz, currentAnswers);
+      correctBlanks += validationResult.correctCount;
+      
+      if (validationResult.isCorrect) {
+        feedbackMessages.add('第${i + 1}个词语：正确');
+      } else {
+        feedbackMessages.add('第${i + 1}个词语：${validationResult.feedback}');
+      }
+      
+      answerIndex += blanksCount;
+    }
+    
+    final isCorrect = correctBlanks == totalBlanks;
+    final score = correctBlanks / totalBlanks;
+    
+    // 如果不是完全正确，还需要检查传统答案部分
+    if (!isCorrect && quizItem.expectedAnswers.length > blankQuizItems.length) {
+      // 有混合的传统答案和填空答案
+      feedbackMessages.add('部分词语需要直接输入完整答案');
+    }
+    
+    return QuizResult(
+      isCorrect: isCorrect,
+      score: score,
+      feedback: isCorrect ? '全部正确！' : feedbackMessages.join('；'),
+      correctAnswer: quizItem.expectedAnswer,
+      userAnswer: userAnswers.join('、'),
+    );
+  }
+
+  /// 验证多个答案
+  QuizResult _validateMultipleAnswers(SmartQuizItem quizItem, List<String> userAnswers) {
+    final normalizedUserAnswers = userAnswers
+        .map((answer) => answer.trim().toLowerCase())
+        .where((answer) => answer.isNotEmpty)
+        .toList();
+    
+    final normalizedExpectedAnswers = quizItem.expectedAnswers
+        .map((answer) => answer.trim().toLowerCase())
+        .toList();
+
+    // 检查数量是否匹配
+    if (normalizedUserAnswers.length != normalizedExpectedAnswers.length) {
+      return QuizResult(
+        isCorrect: false,
+        score: 0.0,
+        feedback: '答案数量不正确。需要${normalizedExpectedAnswers.length}个答案，您输入了${normalizedUserAnswers.length}个。正确答案：${quizItem.expectedAnswer}',
+        correctAnswer: quizItem.expectedAnswer,
+        userAnswer: userAnswers.join('、'),
+      );
+    }
+
+    // 检查所有答案是否都正确
+    int correctCount = 0;
+    for (final expected in normalizedExpectedAnswers) {
+      if (normalizedUserAnswers.contains(expected)) {
+        correctCount++;
+      }
+    }
+
+    final isCorrect = correctCount == normalizedExpectedAnswers.length;
+    final score = correctCount / normalizedExpectedAnswers.length;
+    
+    return QuizResult(
+      isCorrect: isCorrect,
+      score: score,
+      feedback: isCorrect 
+        ? '正确！' 
+        : '部分正确（$correctCount/${normalizedExpectedAnswers.length}）。正确答案：${quizItem.expectedAnswer}',
+      correctAnswer: quizItem.expectedAnswer,
+      userAnswer: userAnswers.join('、'),
+    );
   }
 
   /// 比较答案
@@ -233,34 +536,50 @@ class ContextQuizService {
 class SmartQuizItem {
   final String id;
   final String question;
-  final String expectedAnswer;
+  final String expectedAnswer; // 保留单个答案，向后兼容
+  final List<String> expectedAnswers; // 新增多个答案支持
   final QuizType quizType;
-  final BlankQuizItem? blankQuiz;
+  final BlankQuizItem? blankQuiz; // 单个填空项，向后兼容
+  final List<BlankQuizItem>? blankQuizItems; // 多个填空项，支持多特殊信息
   final QuizDirection direction;
-  final WordMeaningPair pair;
-  final ContextInfo? context;
+  final WordMeaningPair? pair; // 单个pair，可选
+  final List<WordMeaningPair> pairs; // 多个pairs，支持分组
+  final ContextInfo? context; // 单个上下文，向后兼容
+  final List<ContextInfo?> contexts; // 多个上下文，支持多特殊信息
 
   SmartQuizItem({
     required this.id,
     required this.question,
-    required this.expectedAnswer,
+    String? expectedAnswer,
+    List<String>? expectedAnswers,
     required this.quizType,
     this.blankQuiz,
+    this.blankQuizItems,
     required this.direction,
-    required this.pair,
+    this.pair,
+    List<WordMeaningPair>? pairs,
     this.context,
-  });
+    List<ContextInfo?>? contexts,
+  }) : 
+    expectedAnswer = expectedAnswer ?? (expectedAnswers?.join('、') ?? ''),
+    expectedAnswers = expectedAnswers ?? (expectedAnswer != null ? [expectedAnswer] : []),
+    pairs = pairs ?? (pair != null ? [pair] : []),
+    contexts = contexts ?? (context != null ? [context] : []);
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
       'question': question,
       'expected_answer': expectedAnswer,
+      'expected_answers': expectedAnswers,
       'quiz_type': quizType.name,
       'blank_quiz': blankQuiz?.toMap(),
+      'blank_quiz_items': blankQuizItems?.map((item) => item.toMap()).toList(),
       'direction': direction.name,
-      'pair': pair.toMap(),
+      'pair': pair?.toMap(),
+      'pairs': pairs.map((p) => p.toMap()).toList(),
       'context': context?.toMap(),
+      'contexts': contexts.map((c) => c?.toMap()).toList(),
     };
   }
 
@@ -269,11 +588,23 @@ class SmartQuizItem {
       id: map['id'],
       question: map['question'],
       expectedAnswer: map['expected_answer'],
+      expectedAnswers: map['expected_answers'] != null 
+        ? List<String>.from(map['expected_answers'])
+        : null,
       quizType: QuizType.values.byName(map['quiz_type']),
       blankQuiz: map['blank_quiz'] != null ? BlankQuizItem.fromMap(map['blank_quiz']) : null,
+      blankQuizItems: map['blank_quiz_items'] != null 
+        ? (map['blank_quiz_items'] as List).map((item) => BlankQuizItem.fromMap(item)).toList()
+        : null,
       direction: QuizDirection.values.byName(map['direction']),
-      pair: WordMeaningPair.fromMap(map['pair']),
+      pair: map['pair'] != null ? WordMeaningPair.fromMap(map['pair']) : null,
+      pairs: map['pairs'] != null 
+        ? (map['pairs'] as List).map((p) => WordMeaningPair.fromMap(p)).toList()
+        : null,
       context: map['context'] != null ? ContextInfo.fromMap(map['context']) : null,
+      contexts: map['contexts'] != null 
+        ? (map['contexts'] as List).map((c) => c != null ? ContextInfo.fromMap(c) : null).toList()
+        : null,
     );
   }
 }
