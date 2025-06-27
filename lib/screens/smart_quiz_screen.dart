@@ -516,7 +516,8 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // 对于填空题，分别显示问题和填空模板
-                    if (currentItem.quizType == QuizType.blank && currentItem.blankQuiz != null) ...[
+                    if (currentItem.quizType == QuizType.blank && 
+                        (currentItem.blankQuiz != null || (currentItem.blankQuizItems != null && currentItem.blankQuizItems!.isNotEmpty))) ...[
                       // 显示问题（意项）
                       Text(
                         '问题：${currentItem.question}',
@@ -530,7 +531,7 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
                       const SizedBox(height: 16),
                       // 显示填空模板
                       Text(
-                        '填空：${currentItem.blankQuiz!.template}',
+                        '填空：${_getDisplayText(currentItem)}',
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
