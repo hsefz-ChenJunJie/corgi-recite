@@ -1,16 +1,211 @@
-# corgi_recite
+# Corgi Recite
 
-A new Flutter project.
+一个基于 Flutter 的智能词语背诵和测试应用，支持上下文感知填空、多对多关系管理和智能测试系统。
 
-## Getting Started
+## 项目概述
 
-This project is a starting point for a Flutter application.
+Corgi Recite 是一个专业的词语学习应用，旨在通过智能化的学习流程和测试机制，帮助用户高效地掌握词汇。应用采用强制背诵加双向测试的学习模式，结合上下文感知的填空功能，为用户提供完整的词语学习体验。
 
-A few resources to get you started if this is your first Flutter project:
+## 核心特性
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+### 智能学习流程
+- 批量词语添加后强制进入背诵模式
+- 背诵完成自动进入双向测试
+- 错误词语自动进入重学流程
+- 完整的进度保存和恢复机制
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### 上下文感知填空
+- 支持介词、不定代词、词性等特殊信息标记
+- 智能识别上下文信息并生成相应的填空测试
+- 混合传统问答和填空式默写
+- 方向性测试策略：词语到意项和意项到词语采用不同策略
+
+### 多对多关系管理
+- 一个词语可对应多个意项，一个意项可对应多个词语
+- 智能分组显示和测试
+- 自动去重和数据优化
+- 完整的级联删除机制
+
+### 数据管理
+- 支持数据导入导出功能
+- UTF-8 编码确保中文字符正确处理
+- 跨平台数据迁移支持
+- 智能去重和冲突处理
+
+## 技术架构
+
+### 数据层
+- 数据库：SQLite v3，支持自动版本迁移
+- 数据模型：采用四表结构（words、meanings、word_meanings、context_info）
+- 数据助手：DatabaseHelper 单例模式管理
+
+### 服务层
+- ContextQuizService：上下文感知测试管理
+- ReciteService：智能背诵逻辑处理
+- DataPortService：数据导入导出服务
+- ContextParser：智能文本解析和上下文提取
+
+### 界面层
+- HomeScreen：主界面，词语列表和功能入口
+- AddWordScreen：批量添加词语界面
+- SmartQuizScreen：统一测试界面，支持传统题和填空题混合
+- SmartReciteScreen：智能背诵界面
+- SearchQuizScreen：指定内容抽查界面（测试版专属）
+- DataPortScreen：数据管理界面
+
+## 功能详述
+
+### 词语添加
+支持批量添加词语，用户可使用简单的"词语=意项"格式输入，系统自动建立多对多关系。同时支持三种上下文信息格式：
+
+- 占位符格式：`give {something} [to] {someone}=给某人某物`
+- 介词格式：`look [at] the sky=看天空`
+- 词性格式：`run (v.)=跑步`
+
+### 智能测试系统
+采用双向测试机制：
+- 第一阶段：词语到意项，采用传统问答模式，显示所有信息
+- 第二阶段：意项到词语，根据上下文信息智能选择填空或传统问答
+
+填空策略：
+- 词性信息：在任何测试中都显示，不要求填空
+- 介词填空：只填空介词部分，其他内容直接显示
+- 不定代词填空：显示不定代词，要求填空其他内容
+
+### 错误处理机制
+- 立即错误处理：测试中答错立即保存进度并返回背诵
+- 智能重学：错误词语自动进入专门的重学流程
+- 进度恢复：背诵完成后自动恢复到原测试进度继续
+
+### 抽查功能
+- 随机抽查：支持用户自定义抽查数量，采用意项到词语的单向测试
+- 指定抽查：测试版提供搜索和多选功能，允许用户选择特定内容进行测试
+
+## 平台支持
+
+### 主要开发平台
+- macOS：主要开发和测试环境
+- 支持完整的功能集合和最佳性能
+
+### 跨平台兼容
+- iOS：通过 Xcode 构建，完全兼容
+- Android：需要配置 Android SDK
+- Windows：桌面应用版本
+- Linux：桌面应用版本，需要额外配置
+- Web：浏览器版本
+
+## 开发环境配置
+
+### 系统要求
+- Flutter 3.32.4 或更高版本
+- Dart SDK 兼容版本
+- 相应平台的开发工具（Xcode、Android Studio 等）
+
+### 构建指令
+```bash
+# 检查开发环境
+flutter doctor
+
+# 安装依赖
+flutter pub get
+
+# 构建测试版（macOS）
+flutter build macos --debug
+
+# 构建正式版（macOS）
+flutter build macos --release
+```
+
+## 版本管理
+
+### 测试版特性
+- 显示指定抽查功能
+- 提供调试用的返回按钮
+- 完整的功能集合用于开发测试
+
+### 正式版特性
+- 精简界面，隐藏调试功能
+- 强制完成学习流程
+- 专注核心学习体验
+
+## 使用指南
+
+### 基本操作流程
+1. 在主界面点击"添加词语"
+2. 使用"词语=意项"格式批量输入
+3. 系统强制进入背诵模式
+4. 背诵完成后自动开始双向测试
+5. 错误词语会自动重新背诵和测试
+
+### 高级功能使用
+- 上下文填空：添加包含特殊标记的词语体验智能填空
+- 数据管理：使用导入导出功能进行数据备份和迁移
+- 指定测试：在测试版中使用搜索功能选择特定内容测试
+
+## 技术实现亮点
+
+### 数据库设计
+- 采用三表结构实现多对多关系
+- 完整的版本迁移机制确保数据向后兼容
+- 使用事务确保批量操作的原子性和性能
+
+### 智能算法
+- 按业务逻辑进行智能分组而非简单分页
+- 自动检测和处理重复数据
+- 上下文信息的智能解析和应用
+
+### 用户体验设计
+- 强制学习流程确保学习效果
+- 立即错误处理提供及时反馈
+- 渐进式功能设计保持界面简洁
+
+## 开发历程
+
+### 主要版本里程碑
+- v1：基础词语管理和测试功能
+- v2：多对多关系数据库架构
+- v3：上下文感知填空功能集成
+- 当前版本：完整的智能测试系统
+
+### 技术债务管理
+- 统一了测试系统架构
+- 清理了重复代码和冗余逻辑
+- 建立了完整的错误处理机制
+
+## 项目结构
+
+```
+lib/
+├── models/          # 数据模型
+├── services/        # 业务逻辑服务
+├── screens/         # 界面组件
+├── helpers/         # 数据库和工具类
+└── config/          # 配置和常量
+```
+
+## 贡献指南
+
+### 开发规范
+- 遵循 Dart 官方代码风格
+- 保持向后兼容性
+- 完整的错误处理和测试
+- 详细的提交信息和文档
+
+### 代码质量
+- 使用 flutter analyze 进行代码分析
+- 异步操作的正确 Context 管理
+- 完整的数据验证和边界检查
+
+## 许可证
+
+本项目采用 MIT 许可证。详细信息请查看 LICENSE 文件。
+
+## 联系信息
+
+- 项目仓库：https://github.com/hsefz-ChenJunJie/corgi-recite
+- 问题反馈：GitHub Issues
+- 主要开发者：jackchen
+
+---
+
+Corgi Recite - 专业的智能词语学习应用
