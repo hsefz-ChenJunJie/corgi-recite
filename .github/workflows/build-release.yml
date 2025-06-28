@@ -81,7 +81,7 @@ jobs:
 
       - name: Create ZIP package
         run: |
-          cd /build/windows/x64/runner/Release
+          cd build/windows/x64/runner/Release
           # 使用PowerShell创建ZIP文件
           Compress-Archive -Path * -DestinationPath "../../../../../Corgi-Recite-${{ github.event.inputs.version }}-Windows.zip"
 
