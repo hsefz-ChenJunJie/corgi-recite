@@ -172,7 +172,7 @@ class ContextParser {
             hint: '填写除不定代词外的内容',
             type: BlankType.regular,
           ));
-          break; // 只替换一个词
+          // 移除break，处理所有非特殊词汇
         }
       }
     } else {
@@ -188,7 +188,7 @@ class ContextParser {
             hint: '填写内容',
             type: BlankType.regular,
           ));
-          break; // 只替换一个词
+          // 移除break，处理所有词汇
         }
       }
     }
@@ -333,32 +333,39 @@ class ContextParser {
   /// 提取非特殊标记的常规文本词语
   /// 返回除了占位符、介词、关键词以外的普通单词
   static List<String> _extractNonSpecialWords(ContextInfo contextInfo, String template) {
-    // 获取所有特殊内容
+    // 获取所有特殊内容（标准化处理）
     final specialContents = <String>{};
     
-    // 添加占位符内容
+    // 添加占位符内容（移除标点符号并转换为小写）
     for (final placeholder in contextInfo.placeholders) {
-      specialContents.add(placeholder.content);
+      final normalizedContent = placeholder.content.replaceAll(RegExp(r'[^\w]'), '').toLowerCase();
+      if (normalizedContent.isNotEmpty) {
+        specialContents.add(normalizedContent);
+      }
     }
     
-    // 添加介词内容
+    // 添加介词内容（移除标点符号并转换为小写）
     for (final preposition in contextInfo.prepositions) {
-      specialContents.add(preposition.content);
+      final normalizedContent = preposition.content.replaceAll(RegExp(r'[^\w]'), '').toLowerCase();
+      if (normalizedContent.isNotEmpty) {
+        specialContents.add(normalizedContent);
+      }
     }
     
-    
-    // 分割template为单词
-    final words = template.split(RegExp(r'\s+'))
-        .where((word) => word.isNotEmpty)
-        .map((word) => word.replaceAll(RegExp(r'[^\w]'), '')) // 移除标点符号
+    // 分割template为单词，保留原始形式用于返回
+    final originalWords = template.split(RegExp(r'\s+'))
         .where((word) => word.isNotEmpty)
         .toList();
     
     // 过滤出非特殊内容的词语
     final nonSpecialWords = <String>[];
-    for (final word in words) {
-      if (!specialContents.contains(word.toLowerCase()) && 
-          word.length > 1) { // 过滤单字符词语
+    for (final word in originalWords) {
+      // 标准化当前词语进行匹配
+      final normalizedWord = word.replaceAll(RegExp(r'[^\w]'), '').toLowerCase();
+      
+      if (!specialContents.contains(normalizedWord) && 
+          normalizedWord.length > 1) { // 过滤单字符词语
+        // 返回原始形式的词语（保留标点符号）
         nonSpecialWords.add(word);
       }
     }

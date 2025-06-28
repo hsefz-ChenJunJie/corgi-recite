@@ -256,7 +256,36 @@ class ContextQuizService {
               finalAnswers.add(answer);
             }
           } else {
-            // 无特殊信息，但可能有词性，作为传统答案处理
+            // 无特殊信息，但需要用户输入，为它们生成一个简单的填空项
+            // 创建一个简单的填空模板：显示"第X个词语: ___"
+            final wordIndex = i + 1;
+            final emptyContext = ContextInfo(
+              id: null,
+              originalText: answer,
+              displayText: answer,
+              placeholders: [],
+              prepositions: [],
+              partOfSpeech: context?.partOfSpeech,
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+            );
+            final blankQuiz = BlankQuizItem(
+              template: '第${wordIndex}个词语: ___',
+              originalText: answer,
+              contextInfo: emptyContext,
+              blanks: [
+                BlankAnswer(
+                  index: 0,
+                  type: BlankType.regular,
+                  correctAnswer: answer,
+                  acceptableAnswers: [answer],
+                  hint: '请输入词语',
+                )
+              ],
+            );
+            blankQuizItems.add(blankQuiz);
+            
+            // 添加到期望答案中
             if (context?.partOfSpeech != null) {
               finalAnswers.add('$answer (${context!.partOfSpeech})');
             } else {
