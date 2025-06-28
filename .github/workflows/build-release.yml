@@ -40,23 +40,26 @@ jobs:
           # 安装 create-dmg 工具
           brew install create-dmg
           
-          # 创建DMG文件
+          # 创建DMG文件 - 简化配置避免AppleScript超时
           create-dmg \
             --volname "Corgi Recite" \
-            --window-pos 200 120 \
             --window-size 800 400 \
             --icon-size 100 \
-            --icon "Corgi Recite.app" 200 190 \
-            --hide-extension "Corgi Recite.app" \
             --app-drop-link 600 185 \
+            --no-internet-enable \
+            --skip-jenkins \
             "Corgi-Recite-${{ github.event.inputs.version }}-macOS.dmg" \
-            "build/macos/Build/Products/Release/"
+            "build/macos/Build/Products/Release/" || {
+              echo "create-dmg with UI failed, trying simple approach..."
+              # 如果复杂DMG创建失败，使用简单方式
+              hdiutil create -volname "Corgi Recite" -srcfolder "build/macos/Build/Products/Release/" -ov -format UDZO "Corgi-Recite-${{ github.event.inputs.version }}-macOS.dmg"
+            }
 
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4
         with:
           name: corgi-recite-macos-dmg
-          path: corgi_recite/Corgi-Recite-${{ github.event.inputs.version }}-macOS.dmg
+          path: Corgi-Recite-${{ github.event.inputs.version }}-macOS.dmg
 
   # Windows构建和ZIP打包
   build-windows:
@@ -89,7 +92,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: corgi-recite-windows-zip
-          path: corgi_recite/Corgi-Recite-${{ github.event.inputs.version }}-Windows.zip
+          path: Corgi-Recite-${{ github.event.inputs.version }}-Windows.zip
 
   # Android APK构建
   build-android:
@@ -126,7 +129,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: corgi-recite-android-apk
-          path: corgi_recite/Corgi-Recite-${{ github.event.inputs.version }}-Android.apk
+          path: Corgi-Recite-${{ github.event.inputs.version }}-Android.apk
 
   # iOS构建和未签名IPA制作
   build-ios:
@@ -170,7 +173,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: corgi-recite-ios-ipa
-          path: corgi_recite/Corgi-Recite-${{ github.event.inputs.version }}-iOS-unsigned.ipa
+          path: Corgi-Recite-${{ github.event.inputs.version }}-iOS-unsigned.ipa
 
   # 创建GitHub Release（可选）
   # create-release:
