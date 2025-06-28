@@ -145,33 +145,34 @@ class _SearchQuizScreenState extends State<SearchQuizScreen> {
           ],
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // 搜索栏
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      labelText: '搜索词语或意项',
-                      hintText: '输入关键词进行搜索...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _searchController.clear();
-                                _searchPairs('');
-                              },
-                            )
-                          : null,
-                      border: const OutlineInputBorder(),
+      body: SafeArea(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  // 搜索栏
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        labelText: '搜索词语或意项',
+                        hintText: '输入关键词进行搜索...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _searchPairs('');
+                                },
+                              )
+                            : null,
+                        border: const OutlineInputBorder(),
+                      ),
+                      onChanged: _searchPairs,
                     ),
-                    onChanged: _searchPairs,
                   ),
-                ),
                 
                 // 结果统计
                 if (_filteredPairs.isNotEmpty) ...[
@@ -284,8 +285,9 @@ class _SearchQuizScreenState extends State<SearchQuizScreen> {
                           },
                         ),
                 ),
-              ],
-            ),
+                ],
+              ),
+      ),
       floatingActionButton: _selectedIndices.isNotEmpty
           ? FloatingActionButton.extended(
               onPressed: _startQuiz,

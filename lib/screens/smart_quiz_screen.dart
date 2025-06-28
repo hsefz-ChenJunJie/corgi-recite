@@ -503,149 +503,167 @@ class _SmartQuizScreenState extends State<SmartQuizScreen> {
             ? null 
             : Container(), // 隐藏返回按钮（正式版）
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            LinearProgressIndicator(value: progress),
-            const SizedBox(height: 32),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // 对于填空题，分别显示问题和填空模板
-                    if (currentItem.quizType == QuizType.blank && 
-                        (currentItem.blankQuiz != null || (currentItem.blankQuizItems != null && currentItem.blankQuizItems!.isNotEmpty))) ...[
-                      // 显示问题（意项）
-                      Text(
-                        '问题：${currentItem.question}',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight,
+                  ),
+                  child: IntrinsicHeight(
+                    child: Column(
+                      children: [
+                        LinearProgressIndicator(value: progress),
+                        const SizedBox(height: 32),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // 对于填空题，分别显示问题和填空模板
+                                if (currentItem.quizType == QuizType.blank && 
+                                    (currentItem.blankQuiz != null || (currentItem.blankQuizItems != null && currentItem.blankQuizItems!.isNotEmpty))) ...[
+                                  // 显示问题（意项）
+                                  Text(
+                                    '问题：${currentItem.question}',
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  // 显示填空模板
+                                  Text(
+                                    '填空：${_getDisplayText(currentItem)}',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ] else ...[
+                                  // 传统题目只显示问题
+                                  Text(
+                                    _getDisplayText(currentItem),
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                                const SizedBox(height: 16),
+                                Text(
+                                  _getQuestionHint(currentItem),
+                                  style: const TextStyle(fontSize: 16),
+                                ),
+                                const SizedBox(height: 16),
+                                if (_needsMultipleInputs(currentItem)) ...[
+                                  // 多个输入框
+                                  for (int i = 0; i < _controllers.length; i++)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8.0),
+                                      child: TextField(
+                                        controller: _controllers[i],
+                                        focusNode: _focusNodes[i],
+                                        decoration: InputDecoration(
+                                          labelText: _getLabelText(currentItem, i),
+                                          border: const OutlineInputBorder(),
+                                          enabled: !_isAnswered,
+                                        ),
+                                        onSubmitted: (_) {
+                                          if (i < _focusNodes.length - 1) {
+                                            _focusNodes[i + 1].requestFocus();
+                                          } else if (!_isAnswered) {
+                                            _submitAnswer();
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                ] else ...[
+                                  // 单个输入框
+                                  TextField(
+                                    controller: _controllers.first,
+                                    focusNode: _focusNodes.first,
+                                    decoration: const InputDecoration(
+                                      labelText: '答案',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    enabled: !_isAnswered,
+                                    onSubmitted: (_) {
+                                      if (!_isAnswered) {
+                                        _submitAnswer();
+                                      }
+                                    },
+                                  ),
+                                ],
+                                if (_isAnswered) ...[
+                                  const SizedBox(height: 16),
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: _isCorrect ? Colors.green[50] : Colors.red[50],
+                                      border: Border.all(
+                                        color: _isCorrect ? Colors.green : Colors.red,
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _isCorrect ? '✓ 正确！' : '✗ 错误',
+                                          style: TextStyle(
+                                            color: _isCorrect ? Colors.green : Colors.red,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        if (!_isCorrect) ...[
+                                          const SizedBox(height: 8),
+                                          Text('正确答案: ${currentItem.expectedAnswer}'),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      // 显示填空模板
-                      Text(
-                        '填空：${_getDisplayText(currentItem)}',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ] else ...[
-                      // 传统题目只显示问题
-                      Text(
-                        _getDisplayText(currentItem),
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    Text(
-                      _getQuestionHint(currentItem),
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    const SizedBox(height: 16),
-                    if (_needsMultipleInputs(currentItem)) ...[
-                      // 多个输入框
-                      for (int i = 0; i < _controllers.length; i++)
+                        const Spacer(),
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: TextField(
-                            controller: _controllers[i],
-                            focusNode: _focusNodes[i],
-                            decoration: InputDecoration(
-                              labelText: _getLabelText(currentItem, i),
-                              border: const OutlineInputBorder(),
-                              enabled: !_isAnswered,
-                            ),
-                            onSubmitted: (_) {
-                              if (i < _focusNodes.length - 1) {
-                                _focusNodes[i + 1].requestFocus();
-                              } else if (!_isAnswered) {
-                                _submitAnswer();
-                              }
-                            },
-                          ),
-                        ),
-                    ] else ...[
-                      // 单个输入框
-                      TextField(
-                        controller: _controllers.first,
-                        focusNode: _focusNodes.first,
-                        decoration: const InputDecoration(
-                          labelText: '答案',
-                          border: OutlineInputBorder(),
-                        ),
-                        enabled: !_isAnswered,
-                        onSubmitted: (_) {
-                          if (!_isAnswered) {
-                            _submitAnswer();
-                          }
-                        },
-                      ),
-                    ],
-                    if (_isAnswered) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _isCorrect ? Colors.green[50] : Colors.red[50],
-                          border: Border.all(
-                            color: _isCorrect ? Colors.green : Colors.red,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _isCorrect ? '✓ 正确！' : '✗ 错误',
-                              style: TextStyle(
-                                color: _isCorrect ? Colors.green : Colors.red,
-                                fontWeight: FontWeight.bold,
+                          padding: const EdgeInsets.only(top: 16.0),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: _isAnswered ? null : _submitAnswer,
+                                  child: const Text('提交答案'),
+                                ),
                               ),
-                            ),
-                            if (!_isCorrect) ...[
-                              const SizedBox(height: 8),
-                              Text('正确答案: ${currentItem.expectedAnswer}'),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: _isAnswered ? _nextQuestion : null,
+                                  child: Text(_currentIndex < _quizItems.length - 1 ? '下一题' : '完成'),
+                                ),
+                              ),
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const Spacer(),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _isAnswered ? null : _submitAnswer,
-                    child: const Text('提交答案'),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _isAnswered ? _nextQuestion : null,
-                    child: Text(_currentIndex < _quizItems.length - 1 ? '下一题' : '完成'),
-                  ),
-                ),
-              ],
-            ),
-          ],
+              );
+            },
+          ),
         ),
       ),
     );

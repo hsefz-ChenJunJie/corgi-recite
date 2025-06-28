@@ -191,13 +191,22 @@ class _AddWordScreenState extends State<AddWordScreen> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         automaticallyImplyLeading: AppConfig.showBackButtonInAddPage,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: IntrinsicHeight(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -230,55 +239,64 @@ class _AddWordScreenState extends State<AddWordScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: TextFormField(
-                  controller: _batchController,
-                  decoration: const InputDecoration(
-                    labelText: '批量输入词语',
-                    hintText: '请按照格式输入多个词语...\n\napple=苹果\nbook=书籍',
-                    border: OutlineInputBorder(),
-                    alignLabelWithHint: true,
-                    contentPadding: EdgeInsets.all(16),
-                    hintMaxLines: 5,
+                          const SizedBox(height: 16),
+                          Expanded(
+                            child: SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.4, // 设置固定高度，约40%屏幕高度
+                              child: TextFormField(
+                                controller: _batchController,
+                                decoration: const InputDecoration(
+                                  labelText: '批量输入词语',
+                                  hintText: '请按照格式输入多个词语...\n\napple=苹果\nbook=书籍',
+                                  border: OutlineInputBorder(),
+                                  alignLabelWithHint: true,
+                                  contentPadding: EdgeInsets.all(16),
+                                  hintMaxLines: 5,
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return '请输入词语';
+                                  }
+                                  final lines = value.split('\n').where((line) => line.trim().isNotEmpty).toList();
+                                  bool hasValidFormat = false;
+                                  
+                                  for (final line in lines) {
+                                    final parts = line.split('=');
+                                    if (parts.length == 2 && parts[0].trim().isNotEmpty && parts[1].trim().isNotEmpty) {
+                                      hasValidFormat = true;
+                                      break;
+                                    }
+                                  }
+                                  
+                                  if (!hasValidFormat) {
+                                    return '请按照格式输入：词语=意项';
+                                  }
+                                  return null;
+                                },
+                                maxLines: null,
+                                expands: true,
+                                textAlignVertical: TextAlignVertical.top,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: _isLoading ? null : _saveWords,
+                            child: _isLoading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Text('批量保存'),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return '请输入词语';
-                    }
-                    final lines = value.split('\n').where((line) => line.trim().isNotEmpty).toList();
-                    bool hasValidFormat = false;
-                    
-                    for (final line in lines) {
-                      final parts = line.split('=');
-                      if (parts.length == 2 && parts[0].trim().isNotEmpty && parts[1].trim().isNotEmpty) {
-                        hasValidFormat = true;
-                        break;
-                      }
-                    }
-                    
-                    if (!hasValidFormat) {
-                      return '请按照格式输入：词语=意项';
-                    }
-                    return null;
-                  },
-                  maxLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.top,
-                ),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _saveWords,
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('批量保存'),
-              ),
-            ],
+                );
+              },
+            ),
           ),
         ),
       ),
