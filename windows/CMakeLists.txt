@@ -5,6 +5,7 @@ project(corgi_recite LANGUAGES CXX)
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
 set(BINARY_NAME "corgi_recite")
+set(APPLICATION_ID "hsefz.chenjunjie.corgi_recite")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

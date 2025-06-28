@@ -1,6 +1,6 @@
 class AppConfig {
   // 版本控制：true为测试版（显示返回按钮），false为正式版（隐藏返回按钮）
-  static const bool isDebugVersion = true;
+  static const bool isDebugVersion = false;
   
   // 在学习流程中是否显示返回按钮（背诵和测试页面）
   static bool get showBackButtonInLearningFlow => isDebugVersion;

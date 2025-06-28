@@ -102,6 +102,8 @@ Corgi Recite 是一个专业的词语学习应用，旨在通过智能化的学�
 - 相应平台的开发工具（Xcode、Android Studio 等）
 
 ### 构建指令
+
+### 开发构建
 ```bash
 # 检查开发环境
 flutter doctor
@@ -115,6 +117,24 @@ flutter build macos --debug
 # 构建正式版（macOS）
 flutter build macos --release
 ```
+
+### 自动化发布构建
+
+本项目配置了 GitHub Actions 自动化构建系统，支持一键构建所有平台的安装包：
+
+1. 前往 GitHub 仓库的 **Actions** 标签页
+2. 选择 **Build Release Packages** 工作流
+3. 点击 **Run workflow** 按钮
+4. 输入版本号（如 `v1.0.0`）
+5. 等待自动构建完成
+
+#### 支持的平台和格式
+- **macOS**: DMG 安装包
+- **Windows**: ZIP 便携版
+- **Android**: APK 安装包
+- **iOS**: 未签名 IPA 包（需要开发者证书或越狱设备）
+
+构建完成后会自动创建 GitHub Release 并上传所有安装包。详细说明请参考 [BUILD_RELEASE_GUIDE.md](../BUILD_RELEASE_GUIDE.md)。
 
 ## 版本管理
 
