@@ -29,17 +29,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd corgi_recite
           flutter pub get
 
       - name: Build macOS app
         run: |
-          cd corgi_recite
           flutter build macos --release
 
       - name: Create DMG
         run: |
-          cd corgi_recite
           # 安装 create-dmg 工具
           brew install create-dmg
           
@@ -76,17 +73,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd corgi_recite
           flutter pub get
 
       - name: Build Windows app
         run: |
-          cd corgi_recite
           flutter build windows --release
 
       - name: Create ZIP package
-        run: |
-          cd corgi_recite/build/windows/x64/runner/Release
+        run: |/build/windows/x64/runner/Release
           # 使用PowerShell创建ZIP文件
           Compress-Archive -Path * -DestinationPath "../../../../../Corgi-Recite-${{ github.event.inputs.version }}-Windows.zip"
 
@@ -117,17 +111,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd corgi_recite
           flutter pub get
 
       - name: Build Android APK
         run: |
-          cd corgi_recite
           flutter build apk --release
 
       - name: Rename APK
         run: |
-          cd corgi_recite
           cp build/app/outputs/flutter-apk/app-release.apk "Corgi-Recite-${{ github.event.inputs.version }}-Android.apk"
 
       - name: Upload Android APK
@@ -151,17 +142,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd corgi_recite
           flutter pub get
 
       - name: Build iOS app (unsigned)
         run: |
-          cd corgi_recite
           flutter build ios --release --no-codesign
 
       - name: Create unsigned IPA
         run: |
-          cd corgi_recite
           # 创建Payload目录
           mkdir -p Payload
           
@@ -184,45 +172,45 @@ jobs:
           path: corgi_recite/Corgi-Recite-${{ github.event.inputs.version }}-iOS-unsigned.ipa
 
   # 创建GitHub Release（可选）
-  create-release:
-    runs-on: ubuntu-latest
-    needs: [build-macos, build-windows, build-android, build-ios]
-    if: always() && (needs.build-macos.result == 'success' || needs.build-windows.result == 'success' || needs.build-android.result == 'success' || needs.build-ios.result == 'success')
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+  # create-release:
+  #   runs-on: ubuntu-latest
+  #   needs: [build-macos, build-windows, build-android, build-ios]
+  #   if: always() && (needs.build-macos.result == 'success' || needs.build-windows.result == 'success' || needs.build-android.result == 'success' || needs.build-ios.result == 'success')
+  #   steps:
+  #     - name: Download all artifacts
+  #       uses: actions/download-artifact@v4
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.event.inputs.version }}
-          name: Corgi Recite ${{ github.event.inputs.version }}
-          body: |
-            ## Corgi Recite ${{ github.event.inputs.version }}
+  #     - name: Create Release
+  #       uses: softprops/action-gh-release@v1
+  #       with:
+  #         tag_name: ${{ github.event.inputs.version }}
+  #         name: Corgi Recite ${{ github.event.inputs.version }}
+  #         body: |
+  #           ## Corgi Recite ${{ github.event.inputs.version }}
             
-            ### 下载安装包
+  #           ### 下载安装包
             
-            - **macOS**: `Corgi-Recite-${{ github.event.inputs.version }}-macOS.dmg` - macOS安装包
-            - **Windows**: `Corgi-Recite-${{ github.event.inputs.version }}-Windows.zip` - Windows便携版
-            - **Android**: `Corgi-Recite-${{ github.event.inputs.version }}-Android.apk` - Android安装包
-            - **iOS**: `Corgi-Recite-${{ github.event.inputs.version }}-iOS-unsigned.ipa` - iOS未签名安装包（需要开发者证书或越狱设备）
+  #           - **macOS**: `Corgi-Recite-${{ github.event.inputs.version }}-macOS.dmg` - macOS安装包
+  #           - **Windows**: `Corgi-Recite-${{ github.event.inputs.version }}-Windows.zip` - Windows便携版
+  #           - **Android**: `Corgi-Recite-${{ github.event.inputs.version }}-Android.apk` - Android安装包
+  #           - **iOS**: `Corgi-Recite-${{ github.event.inputs.version }}-iOS-unsigned.ipa` - iOS未签名安装包（需要开发者证书或越狱设备）
             
-            ### 功能特性
-            - 智能词语背诵和测试
-            - 支持填空式默写（介词、不定代词、词性标注）
-            - 多对多词语关系管理
-            - 数据导入导出功能
-            - 跨平台支持
+  #           ### 功能特性
+  #           - 智能词语背诵和测试
+  #           - 支持填空式默写（介词、不定代词、词性标注）
+  #           - 多对多词语关系管理
+  #           - 数据导入导出功能
+  #           - 跨平台支持
             
-            ### 安装说明
-            - **macOS**: 下载DMG文件，双击安装
-            - **Windows**: 下载ZIP文件，解压后运行corgi_recite.exe
-            - **Android**: 下载APK文件，允许安装未知来源应用后安装
-            - **iOS**: 需要开发者证书签名或在越狱设备上安装
-          files: |
-            corgi-recite-macos-dmg/*
-            corgi-recite-windows-zip/*
-            corgi-recite-android-apk/*
-            corgi-recite-ios-ipa/*
-          draft: false
-          prerelease: false
+  #           ### 安装说明
+  #           - **macOS**: 下载DMG文件，双击安装
+  #           - **Windows**: 下载ZIP文件，解压后运行corgi_recite.exe
+  #           - **Android**: 下载APK文件，允许安装未知来源应用后安装
+  #           - **iOS**: 需要开发者证书签名或在越狱设备上安装
+  #         files: |
+  #           corgi-recite-macos-dmg/*
+  #           corgi-recite-windows-zip/*
+  #           corgi-recite-android-apk/*
+  #           corgi-recite-ios-ipa/*
+  #         draft: false
+  #         prerelease: false
